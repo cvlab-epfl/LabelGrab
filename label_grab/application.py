@@ -1,10 +1,10 @@
 from pathlib import Path
 import os, sys
 
-from qtpy.QtGui import QGuiApplication
-from qtpy.QtQml import QQmlApplicationEngine #, qmlRegisterType
-#from qtpy.QtQuick import QQuickStyle
 from qtpy.QtCore import QUrl
+from qtpy.QtGui import QGuiApplication
+from qtpy.QtQml import QQmlApplicationEngine
+from qtpy.QtQuick import QQuickItem
 
 #from PySide2 import QtGui
 # from PySide2.QtCore import QObject, QUrl
@@ -15,7 +15,7 @@ from qtpy.QtCore import QUrl
 #
 # from PieChart import PieChart
 
-from .label_backend import LabelOverlayImageProvider
+from .label_backend import LabelOverlayImageProvider, LabelBackend
 
 def main():
 	# Set default style to "fusion"
@@ -31,15 +31,13 @@ def main():
 	asset_dir = Path(__file__).parent / 'qml'
 	qml_engine.addImportPath(str(asset_dir))
 
-	# QML loads image from the backend using an image provider
-	import imageio
-	photo = imageio.imread(asset_dir / 'resources' / 'test.jpg')
-	img_provider = LabelOverlayImageProvider()
-	img_provider.init_image(photo.shape[:2][::-1])
-	qml_engine.addImageProvider('label_overlay', img_provider)
-
 	# Register backend classes
-	#qmlRegisterType(PieChart, 'Charts', 1, 0, 'PieChart')
+	backend = LabelBackend()
+	backend.set_image_path(asset_dir / 'resources' / 'test.jpg')
+	qml_engine.rootContext().setContextProperty('backend', backend)
+
+	# QML loads image from the backend using an image provider
+	qml_engine.addImageProvider('backend', backend.image_provider)
 
 	# Load main window
 	qml_engine.load(QUrl.fromLocalFile(str(asset_dir / 'main.qml')))

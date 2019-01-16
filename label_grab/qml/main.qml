@@ -1,6 +1,7 @@
 import QtQuick 2.11
 import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
+import QtQuick.Shapes 1.11
 
 ApplicationWindow {
 	id: window
@@ -58,6 +59,10 @@ ApplicationWindow {
 			Item {
 				id: imageContainer
 
+				// initially place it in the middle
+				x: parent.width * 0.5
+				y: parent.height * 0.5
+
 				Image {
 					id: imagePhoto
 					source: "resources/test.jpg"
@@ -68,30 +73,138 @@ ApplicationWindow {
 
 				Image {
 					id: imageOverlay
-					source: "image://label_overlay/overlay"
+
+					source: "image://backend/overlay"
+					cache: false
 
 					anchors.horizontalCenter: imageContainer.horizontalCenter
 					anchors.verticalCenter: imageContainer.verticalCenter
+
+					Component.onCompleted: {
+						// Listen for updated of the overlay data
+
+						// The only way to refresh is to change the URL
+						const base_url = this.source + '#';
+						var suffix = 0;
+
+						backend.OverlayUpdated.connect(function() {
+							imageOverlay.source = base_url + suffix;
+							suffix = 1 - suffix;
+						})
+					}
+				}
+			}
+
+			Shape {
+				id: brush
+				x: viewportMouse.mouseX
+				y: viewportMouse.mouseY
+
+				property real radius: 5 * imageContainer.scale
+
+				//				x: parent.width * 0.5
+				//				y: parent.height * 0.5
+
+				ShapePath {
+					strokeWidth: 1
+					strokeColor: "red"
+					strokeStyle: ShapePath.DashLine
+					dashPattern: [ 1, 2]
+
+					fillColor: "transparent"
+
+					startX: -brush.radius; startY: 0
+					PathArc {
+						x: brush.radius; y: 0
+						radiusX: brush.radius; radiusY: brush.radius
+					}
+					PathArc {
+						x: -brush.radius; y: 0
+						radiusX: brush.radius; radiusY: brush.radius
+					}
 				}
 			}
 
 			MouseArea {
+				id: viewportMouse
+
+				property point move_offset
+
 				anchors.fill: parent
+
+				hoverEnabled: true
+				acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+
 				onWheel: {
-					if (wheel.modifiers & Qt.ControlModifier) {
-						imageContainer.rotation += wheel.angleDelta.y / 120 * 5;
-						if (Math.abs(imageContainer.rotation) < 4)
-							imageContainer.rotation = 0;
+					imageContainer.scale += imageContainer.scale * wheel.angleDelta.y / 120 / 10;
+				}
+
+				onPressed: function(event) {
+					console.log('press', event.button, 'at', event.x, event.y)//, ' img', m_img);
+
+					if(event.button === Qt.MiddleButton) {
+						/*
+						Dragging moves the image container to:
+							container.pos = container.initial_position + mouse_position_current - mouse_position_at_start
+						So we only need to save
+							move_offset = container.initial_position - mouse_position_at_start
+						and set the position accordingly
+							container.pos = move_offset + mouse_position_current
+						*/
+						this.move_offset = Qt.point(imageContainer.x - event.x, imageContainer.y - event.y);
+						this.state = "move";
+
 					} else {
-						imageContainer.rotation += wheel.angleDelta.x / 120;
-						if (Math.abs(imageContainer.rotation) < 0.6)
-							imageContainer.rotation = 0;
-						var scaleBefore = imageContainer.scale;
-						imageContainer.scale += imageContainer.scale * wheel.angleDelta.y / 120 / 10;
+						const m_img = this.mapToItem(imagePhoto, event.x, event.y);
+
+						var label_to_paint = 0;
+						if(event.button === Qt.LeftButton) {
+							label_to_paint = 1;
+						}
+						else if (event.button === Qt.RightButton) {
+							label_to_paint = 0;
+						}
+
+						backend.paint_circle(label_to_paint, m_img);
 					}
 				}
 
-				drag.target: imageContainer
+				onReleased: {
+					console.log("released", this.mouseX, this.mouseY);
+					this.state = "";
+				}
+
+				// 		onEntered: { console.log("entered", this.mouseX, this.mouseY); }
+				onExited: {
+					console.log("exited", this.mouseX, this.mouseY);
+					this.state = "";
+				}
+
+				onPositionChanged: function(ev) {
+				}
+
+				states: [
+					State{
+						name: "move"
+						PropertyChanges{
+							target: viewportMouse
+							onReleased: {
+								this.state = "";
+								console.log('released from state')
+							}
+							onPositionChanged: function(event) {
+								imageContainer.x = this.move_offset.x + event.x;
+								imageContainer.y = this.move_offset.y + event.y;
+
+							}
+						}
+						StateChangeScript {
+							script: {
+								console.log('entered state')
+							}
+						}
+					}
+				]
 			}
 		}
 

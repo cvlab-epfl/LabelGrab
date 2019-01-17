@@ -32,7 +32,7 @@ ApplicationWindow {
 			spacing: 0
 
 			ToolButton {
-				text: 'Tool 1'
+				text: '+ New Instance'
 			}
 			ToolButton {
 				text: 'Tool 2'
@@ -125,15 +125,22 @@ ApplicationWindow {
 				}
 			}
 
+			Rectangle{
+				id: roiRect
+				visible: false
+				color: "#0055ff80"
+				border.color: "red"
+				border.width: 3
+			}
+
 			MouseArea {
 				id: viewportMouse
-
 				property point move_offset
+				property point rect_origin
 
 				anchors.fill: parent
-
-				hoverEnabled: true
 				acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+				hoverEnabled: true
 
 				onWheel: {
 					imageContainer.scale += imageContainer.scale * wheel.angleDelta.y / 120 / 10;
@@ -155,47 +162,43 @@ ApplicationWindow {
 						this.state = "move";
 
 					} else {
-						const m_img = this.mapToItem(imagePhoto, event.x, event.y);
-
-						var label_to_paint = 0;
-						if(event.button === Qt.LeftButton) {
-							label_to_paint = 1;
+						if ( event.modifiers & Qt.ShiftModifier ) {
+							this.rect_origin = Qt.point(event.x, event.y)
+							this.state = "rect"
 						}
-						else if (event.button === Qt.RightButton) {
-							label_to_paint = 0;
-						}
+						else
+						{
+							const m_img = this.mapToItem(imagePhoto, event.x, event.y);
 
-						backend.paint_circle(label_to_paint, m_img);
+							var label_to_paint = 0;
+							if(event.button === Qt.LeftButton) {
+								label_to_paint = 1;
+							}
+							else if (event.button === Qt.RightButton) {
+								label_to_paint = 0;
+							}
+
+							backend.paint_circle(label_to_paint, m_img);
+						}
 					}
 				}
 
-				onReleased: {
-					console.log("released", this.mouseX, this.mouseY);
+				function cancel_action() {
 					this.state = "";
 				}
 
-				// 		onEntered: { console.log("entered", this.mouseX, this.mouseY); }
-				onExited: {
-					console.log("exited", this.mouseX, this.mouseY);
-					this.state = "";
-				}
-
-				onPositionChanged: function(ev) {
-				}
+				onReleased: cancel_action()
+				onExited: cancel_action()
 
 				states: [
 					State{
 						name: "move"
 						PropertyChanges{
 							target: viewportMouse
-							onReleased: {
-								this.state = "";
-								console.log('released from state')
-							}
+
 							onPositionChanged: function(event) {
 								imageContainer.x = this.move_offset.x + event.x;
 								imageContainer.y = this.move_offset.y + event.y;
-
 							}
 						}
 						StateChangeScript {
@@ -203,7 +206,37 @@ ApplicationWindow {
 								console.log('entered state')
 							}
 						}
+					},
+					State{
+						name: "rect"
+						PropertyChanges {
+							target: roiRect
+							visible: true
+							x: Math.min(viewportMouse.mouseX, viewportMouse.rect_origin.x)
+							y: Math.min(viewportMouse.mouseY, viewportMouse.rect_origin.y)
+							width: Math.abs(viewportMouse.mouseX - viewportMouse.rect_origin.x)
+							height: Math.abs(viewportMouse.mouseY - viewportMouse.rect_origin.y)
+						}
+
+						PropertyChanges {
+							target: viewportMouse
+
+							onReleased: function(event) {
+								console.log('Set roi', this.rect_origin, ' to ', event.x, event.y, Qt.rect);
+
+								const re = viewportMouse.mapToItem(imagePhoto,
+									Math.min(viewportMouse.mouseX, viewportMouse.rect_origin.x),
+									Math.min(viewportMouse.mouseY, viewportMouse.rect_origin.y),
+									Math.abs(viewportMouse.mouseX - viewportMouse.rect_origin.x),
+									Math.abs(viewportMouse.mouseY - viewportMouse.rect_origin.y),
+								);
+
+								backend.set_roi(re);
+								this.cancel_action();
+							}
+						}
 					}
+
 				]
 			}
 		}

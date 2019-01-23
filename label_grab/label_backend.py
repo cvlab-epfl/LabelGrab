@@ -18,10 +18,12 @@ def bgr(r, g, b, a):
 
 class GrabCutInstance:
 
-	COLOR_OBJ_SURE = bgr(40, 250, 10, 175)
-	COLOR_OBJ_GUESS = bgr(200, 200, 20, 128)
-	COLOR_BGD_GUESS = bgr(120, 40, 20, 128)
-	COLOR_BGD_SURE = bgr(250, 40, 10, 175)
+	COLOR_OBJ_SURE = bgr(40, 250, 10, 100)
+	COLOR_OBJ_GUESS = bgr(200, 200, 20, 50)
+	COLOR_OBJ_CONTOUR = bgr(0, 255, 0, 200)
+
+	COLOR_BGD_GUESS = bgr(120, 40, 20, 0)
+	COLOR_BGD_SURE = bgr(250, 40, 10, 100)
 
 	COLOR_TABLE = np.array([COLOR_BGD_SURE, COLOR_OBJ_SURE, COLOR_BGD_GUESS, COLOR_OBJ_GUESS])
 
@@ -78,6 +80,21 @@ class GrabCutInstance:
 
 		overlay_crop[:] = self.COLOR_TABLE[self.grab_cut_mask.reshape(-1)].reshape(overlay_crop.shape)
 
+
+		mask = (self.grab_cut_mask == cv2.GC_FGD) | (self.grab_cut_mask == cv2.GC_PR_FGD)
+		
+		kernel = np.ones((5,5), np.uint8)
+		erosion = cv2.erode(mask.astype(np.uint8), kernel, iterations = 1).astype(np.bool)
+
+		contour = mask & ~erosion
+		contour_idx = np.where(contour)
+
+		overlay_crop[contour_idx] = self.COLOR_OBJ_CONTOUR
+
+
+
+
+
 		# def assign_reshape():
 		# 	overlay_crop[:] = self.COLOR_TABLE[self.grab_cut_mask.reshape(-1)].reshape(overlay_crop.shape)
 		#
@@ -123,28 +140,56 @@ class LabelOverlayImageProvider(QQuickImageProvider):
 
 
 class ObjectInstance(QObject):
-	def __init__(self, name, num):
+	def __init__(self, name, num, d):
 		super().__init__()
 
-		self.name = name
-		self.num = num
+		self.name_ = name
+		self.num_ = num
+		self.d = d
 
 
-	# nameChanged = Signal()
-	# name = Property(str, attrgetter('name_'),notify=nameChanged)
-	#
-	# @name.setter
-	# def setName(self, value):
-	# 	self.name_ = value
-	# 	self.nameChanged.emit()
-	#
-	# numChanged = Signal()
-	# num = Property(int, attrgetter('num_'), notify=numChanged)
-	#
-	# @num.setter
-	# def setName(self, value):
-	# 	self.num_ = value
-	# 	self.numChanged.emit()
+	xChanged = Signal()
+	x = Property(float, notify=xChanged)
+	
+	@x.getter
+	def getX(self):
+		return float(self.d.crop_tl[0] + self.d.roi_tl[0])
+
+	yChanged = Signal()
+	y = Property(float, notify=yChanged)
+	
+	@y.getter
+	def getX(self):
+		return float(self.d.crop_tl[1] + self.d.roi_tl[1])
+
+	widthChanged = Signal()
+	width = Property(float, notify=widthChanged)
+	@width.getter
+	def getWidth(self):
+		return float(self.d.roi_br[0] - self.d.roi_tl[0])
+
+	heightChanged = Signal()
+	height = Property(float, notify=heightChanged)
+	@height.getter
+	def getHeight(self):
+		return float(self.d.roi_br[1] - self.d.roi_tl[1])
+
+
+	nameChanged = Signal()
+	name = Property(str, attrgetter('name_'),notify=nameChanged)
+	
+	@name.setter
+	def setName(self, value):
+		self.name_ = value
+		self.nameChanged.emit()
+	
+	numChanged = Signal()
+	num = Property(int, attrgetter('num_'), notify=numChanged)
+	
+	@num.setter
+	def setName(self, value):
+		self.num_ = value
+		self.numChanged.emit()
 
 
 
@@ -161,11 +206,13 @@ class InstanceListModel(QAbstractListModel):
 	def __init__(self):
 		super().__init__()
 
-		self.instances = [
-			ObjectInstance('tree', 1),
-			ObjectInstance('tree', 2),
-			ObjectInstance('car', 1),
-		]
+		self.instances = []
+		
+		# [
+		# 	ObjectInstance('tree', 1),
+		# 	ObjectInstance('tree', 2),
+		# 	ObjectInstance('car', 1),
+		# ]
 
 		#self.setRoleNames(dict(enumerate(['rolea'])))
 
@@ -203,7 +250,7 @@ from qtpy.QtGui import QStandardItemModel, QStandardItem
 class LabelBackend(QObject):
 
 	OverlayUpdated = Signal()
-
+	instanceAdded = Signal(QObject)
 
 	def __init__(self):
 		super().__init__()
@@ -230,6 +277,11 @@ class LabelBackend(QObject):
 		self.overlay_data = self.image_provider.image_view
 
 		self.OverlayUpdated.emit()
+
+
+	@Slot(str)
+	def setImage(self, path):
+		self.set_image_path(path)
 
 
 	# def get_instance_list_model(self):
@@ -279,6 +331,9 @@ class LabelBackend(QObject):
 
 			self.OverlayUpdated.emit()
 
+
+			self.instanceAdded.emit(ObjectInstance('anomaly', 1, self.instance))
+
 		except Exception as e:
 			print('Error in paint_cirlce:', e)
 			traceback.print_exc()
@@ -286,6 +341,7 @@ class LabelBackend(QObject):
 	@Slot(QObject)
 	def use_instance_list(self, instance_list_obj):
 		print('use instance list', instance_list_obj, dir(instance_list_obj))
+
 
 		self.instance_list_qml = instance_list_obj
 

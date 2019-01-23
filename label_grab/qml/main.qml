@@ -3,6 +3,11 @@ import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
 import QtQuick.Shapes 1.11
 
+
+//import "./widgets/InstanceBox.qml" as Instbox
+
+import "./widgets" as Widgets
+
 ApplicationWindow {
 	id: window
 	title: "Label Grab"
@@ -44,9 +49,22 @@ ApplicationWindow {
 		}
 	}
 
+	Shortcut {
+		sequence: "Tab"
+		onActivated: imageOverlay.visible = !imageOverlay.visible;
+	}
+
+	Keys.onPressed: {
+		console.log('key', event.key);
+//						this.visible = !this.visible;
+//						console.log('tab pressed')
+	}
+
 	RowLayout {
 		anchors.fill: parent
 		spacing: 5
+
+
 
 		Rectangle {
 			id: viewport
@@ -92,8 +110,32 @@ ApplicationWindow {
 							suffix = 1 - suffix;
 						})
 					}
+
 				}
+
+				Component{
+					id: instanceRectTemplate
+
+					InstanceRectTemplate{
+					}
+				}
+
+				Component.onCompleted: {
+					backend.instanceAdded.connect(function(instance) {
+						console.log('create instance', instance, instance.x, instance.y)
+						instanceRectTemplate.createObject(imagePhoto, {'instanceData': instance});
+					});
+				}
+
+//				InstanceRectTemplate{
+//					x: 32
+//					y: 32
+//					width: 100
+//					height: 100
+//				}
 			}
+
+
 
 			Shape {
 				id: brush

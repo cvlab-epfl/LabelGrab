@@ -1,33 +1,15 @@
 
-from qtpy.QtCore import QObject, Signal, Slot, Property, QPointF, QRectF
+from qtpy.QtCore import Qt, QObject, Signal, Slot, Property, QPointF, QRectF, QAbstractListModel
 from qtpy.QtQuick import QQuickImageProvider
 from qtpy.QtGui import QImage
 import numpy as np
 import cv2, imageio
 import traceback
 import qimage2ndarray
+from operator import attrgetter
 
 
-class LabelOverlayImageProvider(QQuickImageProvider):
-	QT_IMAGE_FORMAT = QImage.Format_ARGB32
 
-	def __init__(self):
-		# set the type use the requestImage method
-		super().__init__(QQuickImageProvider.ImageType.Image)
-
-	def init_image(self, resolution):
-		self.resolution = resolution
-		# apparently, using numpy values in QImage causes it to crash
-		self.image_qt = QImage(int(resolution[0]), int(resolution[1]), self.QT_IMAGE_FORMAT)
-		self.image_view = qimage2ndarray.byte_view(self.image_qt, 'little')
-		# self.image_view = np.zeros((resolution[1], resolution[0], 4), np.uint8)
-		print(f'byte view {self.image_view.shape} {self.image_view.dtype}')
-
-		self.image_view[:] = 0
-
-	def requestImage(self, id, size, requestedSize):
-		print(f'requested img name={id} size={size} reqSize={requestedSize}')
-		return self.image_qt
 
 
 def bgr(r, g, b, a):
@@ -118,6 +100,106 @@ class GrabCutInstance:
 		# #tm(equal) 18.054724517001887
 
 
+class LabelOverlayImageProvider(QQuickImageProvider):
+	QT_IMAGE_FORMAT = QImage.Format_ARGB32
+
+	def __init__(self):
+		# set the type use the requestImage method
+		super().__init__(QQuickImageProvider.ImageType.Image)
+
+	def init_image(self, resolution):
+		self.resolution = resolution
+		# apparently, using numpy values in QImage causes it to crash
+		self.image_qt = QImage(int(resolution[0]), int(resolution[1]), self.QT_IMAGE_FORMAT)
+		self.image_view = qimage2ndarray.byte_view(self.image_qt, 'little')
+		# self.image_view = np.zeros((resolution[1], resolution[0], 4), np.uint8)
+		print(f'byte view {self.image_view.shape} {self.image_view.dtype}')
+
+		self.image_view[:] = 0
+
+	def requestImage(self, id, size, requestedSize):
+		print(f'requested img name={id} size={size} reqSize={requestedSize}')
+		return self.image_qt
+
+
+class ObjectInstance(QObject):
+	def __init__(self, name, num):
+		super().__init__()
+
+		self.name = name
+		self.num = num
+
+
+	# nameChanged = Signal()
+	# name = Property(str, attrgetter('name_'),notify=nameChanged)
+	#
+	# @name.setter
+	# def setName(self, value):
+	# 	self.name_ = value
+	# 	self.nameChanged.emit()
+	#
+	# numChanged = Signal()
+	# num = Property(int, attrgetter('num_'), notify=numChanged)
+	#
+	# @num.setter
+	# def setName(self, value):
+	# 	self.num_ = value
+	# 	self.numChanged.emit()
+
+
+
+class InstanceListModel(QAbstractListModel):
+
+	item_fields = {
+		Qt.UserRole + 1: 'name',
+		Qt.UserRole + 2: 'num',
+	}
+	item_fields_inv = {name: role for role, name in item_fields.items()}
+	item_fields_bytes = {role: bytes(name, 'ascii') for role, name in item_fields.items()}
+
+
+	def __init__(self):
+		super().__init__()
+
+		self.instances = [
+			ObjectInstance('tree', 1),
+			ObjectInstance('tree', 2),
+			ObjectInstance('car', 1),
+		]
+
+		#self.setRoleNames(dict(enumerate(['rolea'])))
+
+		print('role names', self.roleNames())
+
+	def __len__(self):
+		return self.instances.__len__()
+
+	def data(self, index, role):
+		ret = getattr(self.instances[index.row()], self.item_fields[role])
+		print(f'data[{index}] -> {index.row()} -> {ret}')
+		return ret
+
+	def roleNames(self):
+		return self.item_fields_bytes
+
+	def rowCount(self, index):
+		#print('model::rowCount py ', self.__len__(), 'index=', index, index.row())
+		return self.__len__()
+
+
+	# @Slot(int)
+	# def get(self, index):
+	# 	print(f'model::get[{index}]')
+	#
+	# def headerData(self, section, orientation, role):
+	# 	print(f'model::headerData({section}, {orientation}, {role})')
+
+	# def __getattribute__(self, item):
+	# 	print('model::attr ', item)
+	# 	return super().__getattribute__(item)
+
+from qtpy.QtGui import QStandardItemModel, QStandardItem
+
 class LabelBackend(QObject):
 
 	OverlayUpdated = Signal()
@@ -128,6 +210,17 @@ class LabelBackend(QObject):
 
 		self.image_provider = LabelOverlayImageProvider()
 
+		self.instance_list_model = InstanceListModel()
+
+		# instances = [
+		# 	ObjectInstance('tree', 1),
+		# 	ObjectInstance('tree', 2),
+		# 	ObjectInstance('car', 1),
+		# ]
+		# self.instance_list_model = QStandardItemModel(3, 1)
+		#
+		# for i, inst in enumerate(instances):
+		# 	self.instance_list_model.setItem(0, i, inst)
 
 	def set_image_path(self, img_path):
 		self.photo = imageio.imread(img_path)
@@ -138,6 +231,11 @@ class LabelBackend(QObject):
 
 		self.OverlayUpdated.emit()
 
+
+	# def get_instance_list_model(self):
+	# 	return self.instance_list_model
+	instanceListModelChanged = Signal()
+	instanceListModel = Property(QObject, attrgetter('instance_list_model'), notify=instanceListModelChanged)
 
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint, center):
@@ -184,3 +282,26 @@ class LabelBackend(QObject):
 		except Exception as e:
 			print('Error in paint_cirlce:', e)
 			traceback.print_exc()
+
+	@Slot(QObject)
+	def use_instance_list(self, instance_list_obj):
+		print('use instance list', instance_list_obj, dir(instance_list_obj))
+
+		self.instance_list_qml = instance_list_obj
+
+
+		#
+		# print('rc', self.instance_list_qml.rowCount())
+		# self.instance_list_qml.insert(1, ObjectInstance('tree', 1))
+		# self.instance_list_qml.sync()
+		# print('after insert')
+
+
+		#insert_result = self.instance_list_qml.get(0)
+		#, self.instance_list_qml.index(0, 0))
+		#print('insert res', insert_result)
+
+		#self.instance_list_model.dataChanged.emit()
+		#self.instance_list_model.
+
+		self.instance_list_model.dataChanged(self.instance_list_model.index(1, 0), InstanceListModel.item_fields_inv['name'])

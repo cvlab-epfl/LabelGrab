@@ -248,6 +248,44 @@ ApplicationWindow {
 			Layout.fillHeight: true
 
 			color: 'azure'
+
+			ColumnLayout {
+				anchors.fill: parent
+				spacing: 5
+
+				ListModel {
+					id: instanceListModel
+
+					ListElement {
+						name: "Apple"
+						num: 1
+					}
+				}
+
+				Component {
+					id: instanceListTemplate
+					Row {
+						spacing: 5
+						Text { text: name }
+						Text { text: '$' + num }
+					}
+				}
+
+				ListView {
+					//anchors.fill: parent
+					//model: instanceListModel
+					model: backend.instanceListModel
+					delegate: instanceListTemplate
+				}
+
+				Component.onCompleted: {
+					//console.log('rowCount', backend.instanceListModel.rowCount());
+					//console.log('data', backend.instanceListModel.data(2));
+					//backend.use_instance_list(instanceListModel);
+
+					//console.log('model[0]', instanceListModel.get(0));
+				}
+			}
 		}
 	}
 }

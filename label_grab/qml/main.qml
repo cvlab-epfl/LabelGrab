@@ -1,12 +1,13 @@
 import QtQuick 2.11
 import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
+import QtQuick.Dialogs 1.1
 import QtQuick.Shapes 1.11
 
 
 //import "./widgets/InstanceBox.qml" as Instbox
 
-import "./widgets" as Widgets
+//import "./widgets" as Widgets
 
 ApplicationWindow {
 	id: window
@@ -17,7 +18,12 @@ ApplicationWindow {
 	menuBar: MenuBar {
 		Menu {
 			title: qsTr("&File")
-			Action { text: qsTr("&Open..."); shortcut: StandardKey.Open; icon.name: "file-open"}
+			Action { text: qsTr("&Open..."); shortcut: StandardKey.Open; icon.name: "file-open"
+				onTriggered: openFileDialog.open();
+			}
+			Action { text: qsTr("&Save"); shortcut: StandardKey.Save; icon.name: "file-save";
+				onTriggered: backend.save();
+			}
 
 			MenuSeparator { }
 			Action { text: qsTr("&Quit"); icon.name: "quit"; onTriggered: Qt.quit() }
@@ -28,6 +34,22 @@ ApplicationWindow {
 			Action { text: qsTr("Undo"); icon.name: "edit-undo"; shortcut: StandardKey.Undo }
 			Action { text: qsTr("Redo"); icon.name: "edit-redo"; shortcut: StandardKey.Redo }
 		}
+	}
+
+	FileDialog {
+		id: openFileDialog
+		title: "Please choose a file"
+		folder: "../../../example_data"
+		//folder: shortcuts.home
+		onAccepted: {
+			console.log("You chose: " + openFileDialog.fileUrls);
+			backend.setImage(openFileDialog.fileUrl);
+			imagePhoto.source = openFileDialog.fileUrl;
+		}
+		onRejected: {
+			console.log("Canceled")
+		}
+		//Component.onCompleted: visible = true
 	}
 
 	header: ToolBar {
@@ -54,17 +76,9 @@ ApplicationWindow {
 		onActivated: imageOverlay.visible = !imageOverlay.visible;
 	}
 
-	Keys.onPressed: {
-		console.log('key', event.key);
-//						this.visible = !this.visible;
-//						console.log('tab pressed')
-	}
-
 	RowLayout {
 		anchors.fill: parent
 		spacing: 5
-
-
 
 		Rectangle {
 			id: viewport
@@ -111,7 +125,68 @@ ApplicationWindow {
 						})
 					}
 
+					Shape {
+						id: brushPolygon
+						visible: false
+
+						Component {
+							id: brushPolygonSegmentTemplate
+
+							PathLine {
+
+							}
+						}
+
+						ShapePath {
+							id: brushPolygonPath
+
+							strokeWidth: 1
+							strokeColor: (viewportMouse.label_to_paint == 0) ? "#F00000" : "#00F000"
+
+	//						strokeStyle: ShapePath.DashLine
+	//						dashPattern: [ 1, 2]
+
+							fillColor: (viewportMouse.label_to_paint == 0) ? "#20F00000" : "#2000F000"
+
+							startX: viewportMouse.mapToItem(brushPolygon, viewportMouse.mouseX, viewportMouse.mouseY).x
+							startY: viewportMouse.mapToItem(brushPolygon, viewportMouse.mouseX, viewportMouse.mouseY).y
+
+//							PathLine {
+//								x: brushPolygonPath.startX
+//								y: brushPolygonPath.startY
+//							}
+						}
+
+						function start_polygon(pt) {
+//							brushPolygonPath.startX = pt.x;
+//							brushPolygonPath.startY = pt.y;
+							this.add_point(pt)
+							brushPolygon.visible = true;
+						}
+
+						function add_point(pt) {
+							const new_segment = brushPolygonSegmentTemplate.createObject(
+								brushPolygonPath,
+								{'x': pt.x, 'y': pt.y}
+							);
+
+							var new_list = [new_segment];
+							for(var idx = 0; idx < brushPolygonPath.pathElements.length; idx += 1) {
+								new_list.push(brushPolygonPath.pathElements[idx])
+							}
+							brushPolygonPath.pathElements = new_list;
+							console.log(brushPolygonPath.pathElements.length);
+						}
+
+						function finish() {
+							brushPolygonPath.pathElements = [];
+							brushPolygon.visible = false;
+						}
+					}
+
+
 				}
+
 
 				Component{
 					id: instanceRectTemplate
@@ -121,18 +196,11 @@ ApplicationWindow {
 				}
 
 				Component.onCompleted: {
-					backend.instanceAdded.connect(function(instance) {
-						console.log('create instance', instance, instance.x, instance.y)
-						instanceRectTemplate.createObject(imagePhoto, {'instanceData': instance});
-					});
+//					backend.instanceAdded.connect(function(instance) {
+//						console.log('create instance', instance, instance.x, instance.y)
+//						instanceRectTemplate.createObject(imagePhoto, {'instanceData': instance});
+//					});
 				}
-
-//				InstanceRectTemplate{
-//					x: 32
-//					y: 32
-//					width: 100
-//					height: 100
-//				}
 			}
 
 
@@ -143,9 +211,6 @@ ApplicationWindow {
 				y: viewportMouse.mouseY
 
 				property real radius: 5 * imageContainer.scale
-
-				//				x: parent.width * 0.5
-				//				y: parent.height * 0.5
 
 				ShapePath {
 					strokeWidth: 1
@@ -179,6 +244,8 @@ ApplicationWindow {
 				id: viewportMouse
 				property point move_offset
 				property point rect_origin
+				property int label_to_paint: 1
+				property var polygon_points: []
 
 				anchors.fill: parent
 				acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
@@ -204,39 +271,61 @@ ApplicationWindow {
 						this.state = "move";
 
 					} else {
+						if(event.button === Qt.LeftButton) {
+							this.label_to_paint = 1;
+						}
+						else if (event.button === Qt.RightButton) {
+							this.label_to_paint = 0;
+						}
+						const m_img = this.mapToItem(imagePhoto, event.x, event.y);
+
 						if ( event.modifiers & Qt.ShiftModifier ) {
-							this.rect_origin = Qt.point(event.x, event.y)
-							this.state = "rect"
+							this.rect_origin = Qt.point(event.x, event.y);
+							this.state = "rect";
+						}
+						else if ( event.modifiers & Qt.ControlModifier ) {
+							this.polygon_points.length = 0;
+							this.polygon_points.push(m_img);
+							brushPolygon.start_polygon(m_img);
+							this.state = "draw_polygon";
 						}
 						else
 						{
-							const m_img = this.mapToItem(imagePhoto, event.x, event.y);
 
-							var label_to_paint = 0;
-							if(event.button === Qt.LeftButton) {
-								label_to_paint = 1;
-							}
-							else if (event.button === Qt.RightButton) {
-								label_to_paint = 0;
-							}
-
-							backend.paint_circle(label_to_paint, m_img);
+							backend.paint_circle(this.label_to_paint, m_img);
 						}
 					}
 				}
 
 				function cancel_action() {
+					console.log('cancel');
 					this.state = "";
 				}
 
-				onReleased: cancel_action()
+				function finalize_polygon() {
+					console.log("Polygon finished", this.polygon_points);
+					backend.paint_polygon(this.label_to_paint, this.polygon_points);
+					brushPolygon.finish();
+					this.state = "";
+				}
+
+				property var key_pressed: function() {}
+
+				property var key_released: function() {}
+
+
 				onExited: cancel_action()
+
+				Keys.onEnterPressed: key_pressed(event)
+				Keys.onReleased: key_released(event)
 
 				states: [
 					State{
 						name: "move"
 						PropertyChanges{
 							target: viewportMouse
+
+							onReleased: cancel_action()
 
 							onPositionChanged: function(event) {
 								imageContainer.x = this.move_offset.x + event.x;
@@ -249,6 +338,35 @@ ApplicationWindow {
 							}
 						}
 					},
+					State{
+						name: "draw_polygon"
+						PropertyChanges{
+							target: viewportMouse
+							focus: true
+
+							onPressed: function(event) {
+								const m_img = this.mapToItem(imagePhoto, event.x, event.y);
+								this.polygon_points.push(m_img);
+								brushPolygon.add_point(m_img);
+							}
+							key_pressed: function(event) {
+								if (event.key === Qt.Key_Return) {
+									this.finalize_polygon();
+								}
+							}
+							key_released: function(event) {
+								if(event.key === Qt.Key_Control) {
+									this.finalize_polygon();
+								}
+							}
+						}
+						StateChangeScript {
+							script: {
+								console.log('ENTER draw polygon')
+							}
+						}
+					},
+
 					State{
 						name: "rect"
 						PropertyChanges {
@@ -289,44 +407,8 @@ ApplicationWindow {
 			Layout.preferredWidth: 150
 			Layout.fillHeight: true
 
-			color: 'azure'
-
 			ColumnLayout {
-				anchors.fill: parent
-				spacing: 5
 
-				ListModel {
-					id: instanceListModel
-
-					ListElement {
-						name: "Apple"
-						num: 1
-					}
-				}
-
-				Component {
-					id: instanceListTemplate
-					Row {
-						spacing: 5
-						Text { text: name }
-						Text { text: '$' + num }
-					}
-				}
-
-				ListView {
-					//anchors.fill: parent
-					//model: instanceListModel
-					model: backend.instanceListModel
-					delegate: instanceListTemplate
-				}
-
-				Component.onCompleted: {
-					//console.log('rowCount', backend.instanceListModel.rowCount());
-					//console.log('data', backend.instanceListModel.data(2));
-					//backend.use_instance_list(instanceListModel);
-
-					//console.log('model[0]', instanceListModel.get(0));
-				}
 			}
 		}
 	}

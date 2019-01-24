@@ -1,15 +1,15 @@
 
-from qtpy.QtCore import Qt, QObject, Signal, Slot, Property, QPointF, QRectF, QAbstractListModel
+from qtpy.QtCore import Qt, QObject, Signal, Slot, Property, QPointF, QRectF
 from qtpy.QtQuick import QQuickImageProvider
+from qtpy.QtQml import QJSValue
 from qtpy.QtGui import QImage
+
 import numpy as np
 import cv2, imageio
 import traceback
 import qimage2ndarray
 from operator import attrgetter
-
-
-
+from pathlib import Path
 
 
 def bgr(r, g, b, a):
@@ -68,11 +68,28 @@ class GrabCutInstance:
 
 
 	def paint_circle(self, label, center_pt):
-
 		label_value = [cv2.GC_BGD, cv2.GC_FGD][label]
 
 		center_pt = center_pt - self.crop_tl
 		cv2.circle(self.grab_cut_mask, tuple(center_pt), 5, label_value, -1)
+
+
+	def paint_polygon(self, label, points):
+		label_value = [cv2.GC_BGD, cv2.GC_FGD][label]
+
+		points_in_crop = points - self.crop_tl
+		points_in_crop_int = np.rint(points_in_crop).astype(np.int32)
+
+		cv2.drawContours(self.grab_cut_mask, [points_in_crop_int], 0, label, -1)
+
+	def update_mask(self):
+		self.mask = (self.grab_cut_mask == cv2.GC_FGD) | (self.grab_cut_mask == cv2.GC_PR_FGD)
+
+		kernel = np.ones((5, 5), np.uint8)
+		erosion = cv2.erode(self.mask.astype(np.uint8), kernel, iterations=1).astype(np.bool)
+
+		self.contour_mask = self.mask & ~erosion
+		self.contour_where = np.where(self.contour_mask)
 
 
 	def draw_overlay(self, overlay):
@@ -80,17 +97,14 @@ class GrabCutInstance:
 
 		overlay_crop[:] = self.COLOR_TABLE[self.grab_cut_mask.reshape(-1)].reshape(overlay_crop.shape)
 
+		self.update_mask()
 
-		mask = (self.grab_cut_mask == cv2.GC_FGD) | (self.grab_cut_mask == cv2.GC_PR_FGD)
-		
-		kernel = np.ones((5,5), np.uint8)
-		erosion = cv2.erode(mask.astype(np.uint8), kernel, iterations = 1).astype(np.bool)
+		overlay_crop[self.contour_where] = self.COLOR_OBJ_CONTOUR
 
-		contour = mask & ~erosion
-		contour_idx = np.where(contour)
 
-		overlay_crop[contour_idx] = self.COLOR_OBJ_CONTOUR
-
+	def draw_mask(self, global_mask, label=1):
+		mask_crop = global_mask[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
+		mask_crop[self.mask] = label
 
 
 
@@ -139,7 +153,7 @@ class LabelOverlayImageProvider(QQuickImageProvider):
 		return self.image_qt
 
 
-class ObjectInstance(QObject):
+class InstanceGeometryInfo(QObject):
 	def __init__(self, name, num, d):
 		super().__init__()
 
@@ -192,131 +206,97 @@ class ObjectInstance(QObject):
 		self.numChanged.emit()
 
 
-
-class InstanceListModel(QAbstractListModel):
-
-	item_fields = {
-		Qt.UserRole + 1: 'name',
-		Qt.UserRole + 2: 'num',
-	}
-	item_fields_inv = {name: role for role, name in item_fields.items()}
-	item_fields_bytes = {role: bytes(name, 'ascii') for role, name in item_fields.items()}
-
-
-	def __init__(self):
-		super().__init__()
-
-		self.instances = []
-		
-		# [
-		# 	ObjectInstance('tree', 1),
-		# 	ObjectInstance('tree', 2),
-		# 	ObjectInstance('car', 1),
-		# ]
-
-		#self.setRoleNames(dict(enumerate(['rolea'])))
-
-		print('role names', self.roleNames())
-
-	def __len__(self):
-		return self.instances.__len__()
-
-	def data(self, index, role):
-		ret = getattr(self.instances[index.row()], self.item_fields[role])
-		print(f'data[{index}] -> {index.row()} -> {ret}')
-		return ret
-
-	def roleNames(self):
-		return self.item_fields_bytes
-
-	def rowCount(self, index):
-		#print('model::rowCount py ', self.__len__(), 'index=', index, index.row())
-		return self.__len__()
-
-
-	# @Slot(int)
-	# def get(self, index):
-	# 	print(f'model::get[{index}]')
-	#
-	# def headerData(self, section, orientation, role):
-	# 	print(f'model::headerData({section}, {orientation}, {role})')
-
-	# def __getattribute__(self, item):
-	# 	print('model::attr ', item)
-	# 	return super().__getattribute__(item)
-
-from qtpy.QtGui import QStandardItemModel, QStandardItem
-
 class LabelBackend(QObject):
 
 	OverlayUpdated = Signal()
 	instanceAdded = Signal(QObject)
 
+	@staticmethod
+	def qml_point_to_np(qpoint : QPointF):
+		return np.array(qpoint.toTuple())
+
+	@staticmethod
+	def qml_rect_to_np(qrect : QRectF):
+		return np.array([
+			qrect.topLeft().toTuple(),
+			qrect.bottomRight().toTuple(),
+		])
+
 	def __init__(self):
 		super().__init__()
-
 		self.image_provider = LabelOverlayImageProvider()
 
-		self.instance_list_model = InstanceListModel()
-
-		# instances = [
-		# 	ObjectInstance('tree', 1),
-		# 	ObjectInstance('tree', 2),
-		# 	ObjectInstance('car', 1),
-		# ]
-		# self.instance_list_model = QStandardItemModel(3, 1)
-		#
-		# for i, inst in enumerate(instances):
-		# 	self.instance_list_model.setItem(0, i, inst)
 
 	def set_image_path(self, img_path):
-		self.photo = imageio.imread(img_path)
+		print('Loading image', img_path)
+		self.img_path = Path(img_path)
+		self.photo = imageio.imread(self.img_path)
 		self.resolution = np.array(self.photo.shape[:2][::-1])
 
 		self.image_provider.init_image(self.resolution)
 		self.overlay_data = self.image_provider.image_view
+
+		self.instances = []
 
 		self.OverlayUpdated.emit()
 
 
 	@Slot(str)
 	def setImage(self, path):
+		path_prefix = "file://"
+		if path.startswith(path_prefix):
+			path = path[path_prefix.__len__():]
+
 		self.set_image_path(path)
 
-
-	# def get_instance_list_model(self):
-	# 	return self.instance_list_model
-	instanceListModelChanged = Signal()
-	instanceListModel = Property(QObject, attrgetter('instance_list_model'), notify=instanceListModelChanged)
 
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint, center):
 		try: # this has to finish, we don't want to break UI interaction
 			print('paint_circle!', label_to_paint, center)
 
-			center_pt = np.rint([center.x(), center.y()]).astype(dtype=np.int)
+			center_pt = np.rint(center.toTuple()).astype(dtype=np.int)
 
 			self.instance.paint_circle(label_to_paint, center_pt)
 			self.instance.grab_cut_update()
 			self.instance.draw_overlay(self.overlay_data)
-
 			self.OverlayUpdated.emit()
+
+		except Exception as e:
+			print('Error in paint_circle:', e)
+			traceback.print_exc()
+
+	@Slot(int, QJSValue)
+	def paint_polygon(self, label_to_paint, points):
+		try:  # this has to finish, we don't want to break UI interaction
+
+			points = np.array([p.toTuple() for p in points.toVariant()])
+			print('paint_polygon!', label_to_paint, points)
+
+			self.instance.paint_polygon(label_to_paint, points)
+			self.instance.grab_cut_update()
+			self.instance.draw_overlay(self.overlay_data)
+			self.OverlayUpdated.emit()
+
+
+		# center_pt = np.rint([center.x(), center.y()]).astype(dtype=np.int)
+			#
+			# self.instance.paint_circle(label_to_paint, center_pt)
+			# self.instance.grab_cut_update()
+			# self.instance.draw_overlay(self.overlay_data)
+			#
+			# self.OverlayUpdated.emit()
 
 		except Exception as e:
 			print('Error in paint_cirlce:', e)
 			traceback.print_exc()
-
 
 	@Slot(QRectF)
 	def set_roi(self, roi_rect_qt):
 		try: # this has to finish, we don't want to break UI interaction
 			print('set roi!', roi_rect_qt)
 
-			roi_rect = np.array([
-				roi_rect_qt.topLeft().toTuple(),
-				roi_rect_qt.bottomRight().toTuple(),
-			])
-			roi_rect = np.rint(roi_rect).astype(np.int)
+			roi_rect = np.rint(self.qml_rect_to_np(roi_rect_qt)).astype(np.int)
 
 			margin = 32
 
@@ -329,35 +309,24 @@ class LabelBackend(QObject):
 			self.instance.grab_cut_init()
 			self.instance.draw_overlay(self.overlay_data)
 
+			self.instances.append(self.instance)
+
 			self.OverlayUpdated.emit()
 
 
-			self.instanceAdded.emit(ObjectInstance('anomaly', 1, self.instance))
-
 		except Exception as e:
-			print('Error in paint_cirlce:', e)
+			print('Error in set_roi:', e)
 			traceback.print_exc()
 
-	@Slot(QObject)
-	def use_instance_list(self, instance_list_obj):
-		print('use instance list', instance_list_obj, dir(instance_list_obj))
+	@Slot()
+	def save(self):
 
+		global_mask = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 
-		self.instance_list_qml = instance_list_obj
+		for inst_id, inst in enumerate(self.instances):
+			inst.draw_mask(global_mask)
 
+		path_base = self.img_path.parent / self.img_path.name
 
-		#
-		# print('rc', self.instance_list_qml.rowCount())
-		# self.instance_list_qml.insert(1, ObjectInstance('tree', 1))
-		# self.instance_list_qml.sync()
-		# print('after insert')
-
-
-		#insert_result = self.instance_list_qml.get(0)
-		#, self.instance_list_qml.index(0, 0))
-		#print('insert res', insert_result)
-
-		#self.instance_list_model.dataChanged.emit()
-		#self.instance_list_model.
-
-		self.instance_list_model.dataChanged(self.instance_list_model.index(1, 0), InstanceListModel.item_fields_inv['name'])
+		imageio.imwrite(str(path_base) + '_labels.png', global_mask)
+		imageio.imwrite(str(path_base) + '_labelsV.png', 255 * (global_mask > 0))

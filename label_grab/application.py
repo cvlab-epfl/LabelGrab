@@ -23,6 +23,8 @@ def main():
 	os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'fusion')
 
 	qt_app = QGuiApplication(sys.argv)
+	qt_app.setOrganizationName("EPFL")
+	qt_app.setOrganizationDomain("ch")
 
 	# Init QML
 	qml_engine = QQmlApplicationEngine()

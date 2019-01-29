@@ -1,4 +1,6 @@
 
+#pip install numpy opencv-python imageio click qtpy pyside2 qimage2ndarray
+
 #!/usr/bin/env python3
 import os
 

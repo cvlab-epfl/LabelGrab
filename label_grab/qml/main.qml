@@ -31,8 +31,10 @@ ApplicationWindow {
 		Menu {
 			title: qsTr("&Edit")
 
-			Action { text: qsTr("Undo"); icon.name: "edit-undo"; shortcut: StandardKey.Undo }
-			Action { text: qsTr("Redo"); icon.name: "edit-redo"; shortcut: StandardKey.Redo }
+			Action { text: qsTr("&New instance"); shortcut: StandardKey.New; icon.name: "edit-new" }
+
+			//Action { text: qsTr("Undo"); icon.name: "edit-undo"; shortcut: StandardKey.Undo }
+			//Action { text: qsTr("Redo"); icon.name: "edit-redo"; shortcut: StandardKey.Redo }
 		}
 	}
 
@@ -60,6 +62,7 @@ ApplicationWindow {
 
 			ToolButton {
 				text: '+ New Instance'
+
 			}
 			ToolButton {
 				text: 'Tool 2'
@@ -88,6 +91,10 @@ ApplicationWindow {
 
 			color: '#2a2a2a'
 
+			focus: true
+
+			Keys.onEscapePressed: backend.select_instance(0);
+
 			Item {
 				id: imageContainer
 
@@ -108,6 +115,7 @@ ApplicationWindow {
 
 					source: "image://backend/overlay"
 					cache: false
+					smooth: false
 
 					anchors.horizontalCenter: imageContainer.horizontalCenter
 					anchors.verticalCenter: imageContainer.verticalCenter
@@ -140,6 +148,7 @@ ApplicationWindow {
 						ShapePath {
 							id: brushPolygonPath
 
+
 							strokeWidth: 1
 							strokeColor: (viewportMouse.label_to_paint == 0) ? "#F00000" : "#00F000"
 
@@ -148,20 +157,27 @@ ApplicationWindow {
 
 							fillColor: (viewportMouse.label_to_paint == 0) ? "#20F00000" : "#2000F000"
 
-							startX: viewportMouse.mapToItem(brushPolygon, viewportMouse.mouseX, viewportMouse.mouseY).x
-							startY: viewportMouse.mapToItem(brushPolygon, viewportMouse.mouseX, viewportMouse.mouseY).y
+							PathLine {
+								property point startPoint:  viewportMouse.mapToItem(brushPolygon, viewportMouse.mouseX, viewportMouse.mouseY)
 
-//							PathLine {
-//								x: brushPolygonPath.startX
-//								y: brushPolygonPath.startY
-//							}
+								id: segmentToMouse
+								x: startPoint.x
+								y: startPoint.y
+							}
+
+							PathLine {
+								id: segmentToBeginning
+								x: brushPolygonPath.startX
+								y: brushPolygonPath.startY
+							}
 						}
 
 						function start_polygon(pt) {
-//							brushPolygonPath.startX = pt.x;
-//							brushPolygonPath.startY = pt.y;
+							brushPolygonPath.startX = pt.x;
+							brushPolygonPath.startY = pt.y;
+							brushPolygonPath.pathElements = [segmentToMouse, segmentToBeginning];
+							//brushPolygonPath.pathElements = [segmentToBeginning];
 							this.add_point(pt)
-							brushPolygon.visible = true;
 						}
 
 						function add_point(pt) {
@@ -170,17 +186,21 @@ ApplicationWindow {
 								{'x': pt.x, 'y': pt.y}
 							);
 
-							var new_list = [new_segment];
-							for(var idx = 0; idx < brushPolygonPath.pathElements.length; idx += 1) {
+							var new_list = [];
+							//new_list.pop();
+							for(var idx = 0; idx < brushPolygonPath.pathElements.length - 2; idx += 1) {
 								new_list.push(brushPolygonPath.pathElements[idx])
 							}
+							new_list.push(new_segment);
+							new_list.push(segmentToMouse);
+							new_list.push(segmentToBeginning);
+
 							brushPolygonPath.pathElements = new_list;
 							console.log(brushPolygonPath.pathElements.length);
 						}
 
 						function finish() {
 							brushPolygonPath.pathElements = [];
-							brushPolygon.visible = false;
 						}
 					}
 
@@ -205,32 +225,32 @@ ApplicationWindow {
 
 
 
-			Shape {
-				id: brush
-				x: viewportMouse.mouseX
-				y: viewportMouse.mouseY
+//			Shape {
+//				id: brush
+//				x: viewportMouse.mouseX
+//				y: viewportMouse.mouseY
 
-				property real radius: 5 * imageContainer.scale
+//				property real radius: 5 * imageContainer.scale
 
-				ShapePath {
-					strokeWidth: 1
-					strokeColor: "red"
-					strokeStyle: ShapePath.DashLine
-					dashPattern: [ 1, 2]
+//				ShapePath {
+//					strokeWidth: 1
+//					strokeColor: "red"
+//					strokeStyle: ShapePath.DashLine
+//					dashPattern: [ 1, 2]
 
-					fillColor: "transparent"
+//					fillColor: "transparent"
 
-					startX: -brush.radius; startY: 0
-					PathArc {
-						x: brush.radius; y: 0
-						radiusX: brush.radius; radiusY: brush.radius
-					}
-					PathArc {
-						x: -brush.radius; y: 0
-						radiusX: brush.radius; radiusY: brush.radius
-					}
-				}
-			}
+//					startX: -brush.radius; startY: 0
+//					PathArc {
+//						x: brush.radius; y: 0
+//						radiusX: brush.radius; radiusY: brush.radius
+//					}
+//					PathArc {
+//						x: -brush.radius; y: 0
+//						radiusX: brush.radius; radiusY: brush.radius
+//					}
+//				}
+//			}
 
 			Rectangle{
 				id: roiRect
@@ -244,6 +264,7 @@ ApplicationWindow {
 				id: viewportMouse
 				property point move_offset
 				property point rect_origin
+				property point last_polygon_click
 				property int label_to_paint: 1
 				property var polygon_points: []
 
@@ -284,15 +305,14 @@ ApplicationWindow {
 							this.state = "rect";
 						}
 						else if ( event.modifiers & Qt.ControlModifier ) {
+							backend.paint_circle(this.label_to_paint, m_img);
+						}
+						else
+						{
 							this.polygon_points.length = 0;
 							this.polygon_points.push(m_img);
 							brushPolygon.start_polygon(m_img);
 							this.state = "draw_polygon";
-						}
-						else
-						{
-
-							backend.paint_circle(this.label_to_paint, m_img);
 						}
 					}
 				}
@@ -316,7 +336,7 @@ ApplicationWindow {
 
 				onExited: cancel_action()
 
-				Keys.onEnterPressed: key_pressed(event)
+				Keys.onPressed: key_pressed(event)
 				Keys.onReleased: key_released(event)
 
 				states: [
@@ -345,18 +365,22 @@ ApplicationWindow {
 							focus: true
 
 							onPressed: function(event) {
-								const m_img = this.mapToItem(imagePhoto, event.x, event.y);
-								this.polygon_points.push(m_img);
-								brushPolygon.add_point(m_img);
+								if(!( event.x === last_polygon_click.x && event.y === last_polygon_click.y )) {
+									last_polygon_click.x = event.x;
+									last_polygon_click.y = event.y;
+									const m_img = this.mapToItem(imagePhoto, event.x, event.y);
+									this.polygon_points.push(m_img);
+									brushPolygon.add_point(m_img);
+								}
+							}
+							onDoubleClicked: function(event) {
+								this.finalize_polygon();
 							}
 							key_pressed: function(event) {
 								if (event.key === Qt.Key_Return) {
 									this.finalize_polygon();
-								}
-							}
-							key_released: function(event) {
-								if(event.key === Qt.Key_Control) {
-									this.finalize_polygon();
+								} else if ( event.key === Qt.Key_Escape) {
+									this.cancel_action();
 								}
 							}
 						}
@@ -364,6 +388,12 @@ ApplicationWindow {
 							script: {
 								console.log('ENTER draw polygon')
 							}
+
+						}
+						PropertyChanges{
+							target: brushPolygon
+
+							visible: true
 						}
 					},
 
@@ -391,7 +421,7 @@ ApplicationWindow {
 									Math.abs(viewportMouse.mouseY - viewportMouse.rect_origin.y),
 								);
 
-								backend.set_roi(re);
+								backend.new_instance(re);
 								this.cancel_action();
 							}
 						}

@@ -27,7 +27,10 @@ class GrabCutInstance:
 
 	COLOR_TABLE = np.array([COLOR_BGD_SURE, COLOR_OBJ_SURE, COLOR_BGD_GUESS, COLOR_OBJ_GUESS])
 
-	def __init__(self, photo, crop_rect, roi_rect):
+	MORPH_KERNEL = np.ones((3, 3), np.uint8)
+
+	def __init__(self, instance_id, photo, crop_rect, roi_rect):
+		self.id = instance_id
 		self.photo = photo
 
 		self.crop_tl = crop_rect[0]
@@ -55,6 +58,8 @@ class GrabCutInstance:
 			5, cv2.GC_INIT_WITH_RECT,
 		)
 
+		self.update_mask()
+
 
 	def grab_cut_update(self):
 		cv2.grabCut(
@@ -66,12 +71,16 @@ class GrabCutInstance:
 			5, cv2.GC_INIT_WITH_MASK,
 		)
 
+		self.update_mask()
+
 
 	def paint_circle(self, label, center_pt):
 		label_value = [cv2.GC_BGD, cv2.GC_FGD][label]
 
 		center_pt = center_pt - self.crop_tl
 		cv2.circle(self.grab_cut_mask, tuple(center_pt), 5, label_value, -1)
+
+		self.update_mask()
 
 
 	def paint_polygon(self, label, points):
@@ -80,34 +89,33 @@ class GrabCutInstance:
 		points_in_crop = points - self.crop_tl
 		points_in_crop_int = np.rint(points_in_crop).astype(np.int32)
 
-		cv2.drawContours(self.grab_cut_mask, [points_in_crop_int], 0, label, -1)
+		cv2.drawContours(self.grab_cut_mask, [points_in_crop_int], 0, label_value, -1)
+
+		self.update_mask()
+
 
 	def update_mask(self):
 		self.mask = (self.grab_cut_mask == cv2.GC_FGD) | (self.grab_cut_mask == cv2.GC_PR_FGD)
 
-		kernel = np.ones((5, 5), np.uint8)
-		erosion = cv2.erode(self.mask.astype(np.uint8), kernel, iterations=1).astype(np.bool)
+
+		erosion = cv2.erode(self.mask.astype(np.uint8), self.MORPH_KERNEL, iterations=1).astype(np.bool)
 
 		self.contour_mask = self.mask & ~erosion
 		self.contour_where = np.where(self.contour_mask)
 
 
-	def draw_overlay(self, overlay):
+	def draw_overlay_edit_interface(self, overlay):
 		overlay_crop = overlay[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
-
 		overlay_crop[:] = self.COLOR_TABLE[self.grab_cut_mask.reshape(-1)].reshape(overlay_crop.shape)
-
-		self.update_mask()
-
 		overlay_crop[self.contour_where] = self.COLOR_OBJ_CONTOUR
 
+	def draw_overlay_contour(self, overlay):
+		overlay_crop = overlay[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
+		overlay_crop[self.contour_where] = self.COLOR_OBJ_CONTOUR
 
 	def draw_mask(self, global_mask, label=1):
 		mask_crop = global_mask[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 		mask_crop[self.mask] = label
-
-
-
 
 		# def assign_reshape():
 		# 	overlay_crop[:] = self.COLOR_TABLE[self.grab_cut_mask.reshape(-1)].reshape(overlay_crop.shape)
@@ -229,6 +237,7 @@ class LabelBackend(QObject):
 
 	def set_image_path(self, img_path):
 		print('Loading image', img_path)
+
 		self.img_path = Path(img_path)
 		self.photo = imageio.imread(self.img_path)
 		self.resolution = np.array(self.photo.shape[:2][::-1])
@@ -236,7 +245,10 @@ class LabelBackend(QObject):
 		self.image_provider.init_image(self.resolution)
 		self.overlay_data = self.image_provider.image_view
 
+		self.next_instance_id = 1
 		self.instances = []
+		self.instances_by_id = dict()
+		self.instance_selected = None
 
 		self.OverlayUpdated.emit()
 
@@ -253,14 +265,16 @@ class LabelBackend(QObject):
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint, center):
 		try: # this has to finish, we don't want to break UI interaction
-			print('paint_circle!', label_to_paint, center)
+			#print('paint_circle!', label_to_paint, center)
 
-			center_pt = np.rint(center.toTuple()).astype(dtype=np.int)
+			if self.instance_selected:
+				center_pt = np.rint(center.toTuple()).astype(dtype=np.int)
 
-			self.instance.paint_circle(label_to_paint, center_pt)
-			self.instance.grab_cut_update()
-			self.instance.draw_overlay(self.overlay_data)
-			self.OverlayUpdated.emit()
+				self.instance_selected.paint_circle(label_to_paint, center_pt)
+				self.instance_selected.grab_cut_update()
+				self.overlay_refresh_after_edit()
+			else:
+				print('paint_circle: no instance is selected')
 
 		except Exception as e:
 			print('Error in paint_circle:', e)
@@ -270,53 +284,92 @@ class LabelBackend(QObject):
 	def paint_polygon(self, label_to_paint, points):
 		try:  # this has to finish, we don't want to break UI interaction
 
-			points = np.array([p.toTuple() for p in points.toVariant()])
-			print('paint_polygon!', label_to_paint, points)
+			if self.instance_selected:
+				points = np.array([p.toTuple() for p in points.toVariant()])
+				#print('paint_polygon!', label_to_paint, points)
 
-			self.instance.paint_polygon(label_to_paint, points)
-			self.instance.grab_cut_update()
-			self.instance.draw_overlay(self.overlay_data)
-			self.OverlayUpdated.emit()
-
-
-		# center_pt = np.rint([center.x(), center.y()]).astype(dtype=np.int)
-			#
-			# self.instance.paint_circle(label_to_paint, center_pt)
-			# self.instance.grab_cut_update()
-			# self.instance.draw_overlay(self.overlay_data)
-			#
-			# self.OverlayUpdated.emit()
+				self.instance_selected.paint_polygon(label_to_paint, points)
+				self.instance_selected.grab_cut_update()
+				self.overlay_refresh_after_edit()
+			else:
+				print('paint_polygon: no instance is selected')
 
 		except Exception as e:
-			print('Error in paint_cirlce:', e)
+			print('Error in paint_polygon:', e)
 			traceback.print_exc()
 
-	@Slot(QRectF)
-	def set_roi(self, roi_rect_qt):
-		try: # this has to finish, we don't want to break UI interaction
-			print('set roi!', roi_rect_qt)
+	def overlay_refresh_after_selection_change(self):
+		if self.instance_selected:
 
+			self.overlay_data[:] = (0, 0, 0, 128)
+			self.instance_selected.draw_overlay_edit_interface(self.overlay_data)
+
+		else:
+
+			self.overlay_data[:] = 0
+
+			for inst in self.instances:
+				inst.draw_overlay_contour(self.overlay_data)
+
+		self.OverlayUpdated.emit()
+
+
+	def overlay_refresh_after_edit(self):
+		if self.instance_selected:
+			self.instance_selected.draw_overlay_edit_interface(self.overlay_data)
+			self.OverlayUpdated.emit()
+		else:
+			print('overlay_refresh_after_edit but instance_selected is null')
+
+
+	@Slot(int)
+	def select_instance(self, instance_id):
+		if instance_id <= 0:
+			instance_id = None
+
+		if instance_id:
+			self.instance_selected = self.instances_by_id[instance_id]
+		else:
+			self.instance_selected = None
+
+		self.overlay_refresh_after_selection_change()
+
+	@Slot(QRectF)
+	def new_instance(self, roi_rect_qt):
+		try: # this has to finish, we don't want to break UI interaction
 			roi_rect = np.rint(self.qml_rect_to_np(roi_rect_qt)).astype(np.int)
+			print('new instance!', roi_rect)
 
 			margin = 32
-
 			crop_rect = np.array([
 				np.maximum(roi_rect[0] - margin, 0),
 				np.minimum(roi_rect[1] + margin, self.resolution),
 			])
 
-			self.instance = GrabCutInstance(self.photo, crop_rect, roi_rect)
-			self.instance.grab_cut_init()
-			self.instance.draw_overlay(self.overlay_data)
+			instance = GrabCutInstance(self.next_instance_id, self.photo, crop_rect, roi_rect)
+			self.next_instance_id += 1
+			self.instances.append(instance)
+			self.instances_by_id[instance.id] = instance
 
-			self.instances.append(self.instance)
+			instance.grab_cut_init()
 
-			self.OverlayUpdated.emit()
-
+			self.select_instance(instance.id)
 
 		except Exception as e:
-			print('Error in set_roi:', e)
+			print('Error in new_instance:', e)
 			traceback.print_exc()
+
+	@Slot(int)
+	def delete_instance(self, instance_id):
+		inst = self.instances_by_id[instance_id]
+
+		if self.instance_selected == inst:
+			self.select_instance(-1)
+
+		del self.instances_by_id[instance_id]
+		self.instances.remove(inst)
+		self.overlay_refresh_after_selection_change()
+
 
 	@Slot()
 	def save(self):

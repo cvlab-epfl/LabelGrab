@@ -2,14 +2,16 @@
 from qtpy.QtCore import Qt, QObject, Signal, Slot, Property, QPointF, QRectF
 from qtpy.QtQuick import QQuickImageProvider
 from qtpy.QtQml import QJSValue
-from qtpy.QtGui import QImage
+from qtpy.QtGui import QImage, QColor
 
 import numpy as np
 import cv2, imageio
 import traceback
 import qimage2ndarray
+from collections import namedtuple
 from operator import attrgetter
 from pathlib import Path
+import json, zipfile
 
 
 def bgr(r, g, b, a):
@@ -214,6 +216,55 @@ class InstanceGeometryInfo(QObject):
 		self.numChanged.emit()
 
 
+class LabelConfig:
+
+	SemanticClass = namedtuple('LabelClass', ['id', 'name', 'color'])
+
+	def __init__(self):
+		self.set_classes([
+			self.SemanticClass(2, 'anomaly', self.convert_color('orangered'))
+		])
+
+	def set_classes(self, classes):
+		self.classes = classes
+		self.classes_by_id = {cls.id: cls for cls in classes}
+
+	@staticmethod
+	def convert_color(color_json):
+
+		# named color
+		if isinstance(color_json, str):
+
+			qc = QColor(color_json.lower())
+
+			if qc.isValid():
+				return np.array(qc.toTuple(), dtype=np.uint8)[:3]
+			else:
+				# http://doc.qt.io/qt-5/qml-color.html
+				raise ValueError(f'Invalid color name {color_json}, please use SVG names')
+
+		else:
+			color = np.array(color_json)
+
+			if color.__len__() != 3:
+				raise ValueError(f'Color should be [r, g, b] but received wrong length: {color_json}')
+
+			if issubclass(color.dtype, np.floating):
+				color *= 255
+
+			return color.astype(np.uint8)
+
+
+	def load_from_path(self, path):
+		with Path(path).open('r') as f_in:
+			content_json = json.load(f_in)
+
+		self.set_classes([
+			self.SemanticClass(cls_json['id'], cls_json['name'], self.convert_color(cls_json['color']))
+			for cls_json in content_json['classes']
+		])
+
+
 class LabelBackend(QObject):
 
 	OverlayUpdated = Signal()
@@ -234,6 +285,13 @@ class LabelBackend(QObject):
 		super().__init__()
 		self.image_provider = LabelOverlayImageProvider()
 
+		self.config = LabelConfig()
+
+	def load_config(self, cfg_path):
+		if cfg_path.is_file():
+			self.config.load_from_path(cfg_path)
+		else:
+			print(f'Config path {cfg_path} is not a file')
 
 	def set_image_path(self, img_path):
 		print('Loading image', img_path)

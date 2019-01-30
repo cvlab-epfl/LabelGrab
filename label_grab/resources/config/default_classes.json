@@ -1,0 +1,7 @@
+
+{
+	"classes": [
+		{"id": 1, "name": "road", "color": "plum"},
+		{"id": 2, "name": "anomaly", "color": "orangered"}
+	]
+}

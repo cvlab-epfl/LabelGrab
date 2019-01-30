@@ -4,11 +4,6 @@ import QtQuick.Layouts 1.11
 import QtQuick.Dialogs 1.1
 import QtQuick.Shapes 1.11
 
-
-//import "./widgets/InstanceBox.qml" as Instbox
-
-//import "./widgets" as Widgets
-
 ApplicationWindow {
 	id: window
 	title: "Label Grab"
@@ -128,7 +123,7 @@ ApplicationWindow {
 
 				Image {
 					id: imagePhoto
-					source: "resources/test.jpg"
+					source: "images/test.jpg"
 
 					anchors.horizontalCenter: imageContainer.horizontalCenter
 					anchors.verticalCenter: imageContainer.verticalCenter

@@ -36,22 +36,35 @@ ApplicationWindow {
 			//Action { text: qsTr("Undo"); icon.name: "edit-undo"; shortcut: StandardKey.Undo }
 			//Action { text: qsTr("Redo"); icon.name: "edit-redo"; shortcut: StandardKey.Redo }
 		}
+		Menu {
+			title: qsTr("&View")
+
+			Action {
+				id: actionToggleOverlay
+				text: qsTr("Toggle overlay") + ' [' + this.shortcut + ']'
+				shortcut: "Tab"
+				onTriggered: {
+					imageOverlay.visible = !imageOverlay.visible;
+				}
+			}
+		}
 	}
 
 	FileDialog {
 		id: openFileDialog
 		title: "Please choose a file"
 		folder: "../../../example_data"
-		//folder: shortcuts.home
+
 		onAccepted: {
 			console.log("You chose: " + openFileDialog.fileUrls);
 			backend.setImage(openFileDialog.fileUrl);
 			imagePhoto.source = openFileDialog.fileUrl;
+
+			imageContainer.resetTransform();
 		}
 		onRejected: {
 			console.log("Canceled")
 		}
-		//Component.onCompleted: visible = true
 	}
 
 	header: ToolBar {
@@ -60,10 +73,7 @@ ApplicationWindow {
 			anchors.fill: parent
 			spacing: 0
 
-			ToolButton {
-				text: '+ New Instance'
-
-			}
+			ToolButton { text: actionToggleOverlay.text; action: actionToggleOverlay	}
 			ToolButton {
 				text: 'Tool 2'
 			}
@@ -72,11 +82,6 @@ ApplicationWindow {
 				Layout.fillWidth: true
 			}
 		}
-	}
-
-	Shortcut {
-		sequence: "Tab"
-		onActivated: imageOverlay.visible = !imageOverlay.visible;
 	}
 
 	RowLayout {
@@ -101,6 +106,25 @@ ApplicationWindow {
 				// initially place it in the middle
 				x: parent.width * 0.5
 				y: parent.height * 0.5
+
+				transform: [imageTranslation, imageScale]
+
+				Scale {
+					id: imageScale
+					property real value: 1.0
+					xScale: value
+					yScale: value
+				}
+
+				Translate {
+					id: imageTranslation
+				}
+
+				function resetTransform() {
+					imageScale.value = Math.min(parent.width / (imagePhoto.implicitWidth + 32), parent.height / (imagePhoto.implicitHeight + 32));
+					imageTranslation.x = 0;
+					imageTranslation.y = 0;
+				}
 
 				Image {
 					id: imagePhoto
@@ -131,6 +155,8 @@ ApplicationWindow {
 							imageOverlay.source = base_url + suffix;
 							suffix = 1 - suffix;
 						})
+
+						imageContainer.resetTransform();
 					}
 
 					Shape {
@@ -139,10 +165,7 @@ ApplicationWindow {
 
 						Component {
 							id: brushPolygonSegmentTemplate
-
-							PathLine {
-
-							}
+							PathLine {}
 						}
 
 						ShapePath {
@@ -203,60 +226,14 @@ ApplicationWindow {
 							brushPolygonPath.pathElements = [];
 						}
 					}
-
-
-				}
-
-
-				Component{
-					id: instanceRectTemplate
-
-					InstanceRectTemplate{
-					}
-				}
-
-				Component.onCompleted: {
-//					backend.instanceAdded.connect(function(instance) {
-//						console.log('create instance', instance, instance.x, instance.y)
-//						instanceRectTemplate.createObject(imagePhoto, {'instanceData': instance});
-//					});
 				}
 			}
-
-
-
-//			Shape {
-//				id: brush
-//				x: viewportMouse.mouseX
-//				y: viewportMouse.mouseY
-
-//				property real radius: 5 * imageContainer.scale
-
-//				ShapePath {
-//					strokeWidth: 1
-//					strokeColor: "red"
-//					strokeStyle: ShapePath.DashLine
-//					dashPattern: [ 1, 2]
-
-//					fillColor: "transparent"
-
-//					startX: -brush.radius; startY: 0
-//					PathArc {
-//						x: brush.radius; y: 0
-//						radiusX: brush.radius; radiusY: brush.radius
-//					}
-//					PathArc {
-//						x: -brush.radius; y: 0
-//						radiusX: brush.radius; radiusY: brush.radius
-//					}
-//				}
-//			}
 
 			Rectangle{
 				id: roiRect
 				visible: false
-				color: "#0055ff80"
-				border.color: "red"
+				color: "transparent"
+				border.color: "cyan"
 				border.width: 3
 			}
 
@@ -273,11 +250,13 @@ ApplicationWindow {
 				hoverEnabled: true
 
 				onWheel: {
-					imageContainer.scale += imageContainer.scale * wheel.angleDelta.y / 120 / 10;
+					imageScale.value += imageScale.value * wheel.angleDelta.y / 1200;
 				}
 
 				onPressed: function(event) {
 					console.log('press', event.button, 'at', event.x, event.y)//, ' img', m_img);
+
+					const m_img = this.mapToItem(imagePhoto, event.x, event.y);
 
 					if(event.button === Qt.MiddleButton) {
 						/*
@@ -288,7 +267,8 @@ ApplicationWindow {
 						and set the position accordingly
 							container.pos = move_offset + mouse_position_current
 						*/
-						this.move_offset = Qt.point(imageContainer.x - event.x, imageContainer.y - event.y);
+						const scale_inv = 1./imageScale.value; // the translation is applied before scale, we our offset has to compensate for that
+						this.move_offset = Qt.point(imageTranslation.x - scale_inv * event.x, imageTranslation.y - scale_inv * event.y);
 						this.state = "move";
 
 					} else {
@@ -298,7 +278,7 @@ ApplicationWindow {
 						else if (event.button === Qt.RightButton) {
 							this.label_to_paint = 0;
 						}
-						const m_img = this.mapToItem(imagePhoto, event.x, event.y);
+
 
 						if ( event.modifiers & Qt.ShiftModifier ) {
 							this.rect_origin = Qt.point(event.x, event.y);
@@ -348,8 +328,9 @@ ApplicationWindow {
 							onReleased: cancel_action()
 
 							onPositionChanged: function(event) {
-								imageContainer.x = this.move_offset.x + event.x;
-								imageContainer.y = this.move_offset.y + event.y;
+								const scale_inv = 1./imageScale.value; // the translation is applied before scale, we our offset has to compensate for that
+								imageTranslation.x = this.move_offset.x + event.x*scale_inv;
+								imageTranslation.y = this.move_offset.y + event.y*scale_inv;
 							}
 						}
 						StateChangeScript {

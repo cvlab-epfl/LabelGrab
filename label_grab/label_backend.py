@@ -29,11 +29,20 @@ class GrabCutInstance:
 
 	COLOR_TABLE = np.array([COLOR_BGD_SURE, COLOR_OBJ_SURE, COLOR_BGD_GUESS, COLOR_OBJ_GUESS])
 
+	ALPHA_CONTOUR = 255
+	ALPHA_CLASS_COLOR = 150
+
 	MORPH_KERNEL = np.ones((3, 3), np.uint8)
 
-	def __init__(self, instance_id, photo, crop_rect, roi_rect):
+
+
+	def __init__(self, instance_id, semantic_class, photo, crop_rect, roi_rect):
 		self.id = instance_id
+		self.semantic_class = semantic_class
 		self.photo = photo
+
+		self.crop_rect = crop_rect
+		self.roi_rect = roi_rect
 
 		self.crop_tl = crop_rect[0]
 		self.crop_br = crop_rect[1]
@@ -45,18 +54,15 @@ class GrabCutInstance:
 
 
 	def grab_cut_init(self):
-		self.grab_cut_state = (
-			np.zeros((1,65), np.float64),
-			np.zeros((1,65), np.float64),
-		)
+		self.grab_cut_state = np.zeros((2,65), np.float64)
 
 		self.grab_cut_mask = np.zeros(self.photo_crop.shape[:2], dtype=np.uint8)
 		cv2.grabCut(
 			self.photo_crop,
 			self.grab_cut_mask,
 			tuple(np.concatenate([self.roi_tl, self.roi_br-self.roi_tl], axis=0)),
-			self.grab_cut_state[0],
-			self.grab_cut_state[1],
+			self.grab_cut_state[0:1],
+			self.grab_cut_state[1:2],
 			5, cv2.GC_INIT_WITH_RECT,
 		)
 
@@ -68,8 +74,8 @@ class GrabCutInstance:
 			self.photo_crop,
 			self.grab_cut_mask,
 			None,
-			self.grab_cut_state[0],
-			self.grab_cut_state[1],
+			self.grab_cut_state[0:1],
+			self.grab_cut_state[1:2],
 			5, cv2.GC_INIT_WITH_MASK,
 		)
 
@@ -113,9 +119,17 @@ class GrabCutInstance:
 
 	def draw_overlay_contour(self, overlay):
 		overlay_crop = overlay[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
-		overlay_crop[self.contour_where] = self.COLOR_OBJ_CONTOUR
 
-	def draw_mask(self, global_mask, label=1):
+		class_color = self.semantic_class.color
+
+		overlay_crop[self.mask] = np.concatenate([class_color, [self.ALPHA_CONTOUR]], axis=0)
+		overlay_crop[self.contour_where] = np.concatenate([class_color, [self.ALPHA_CLASS_COLOR]], axis=0)
+
+	def draw_mask(self, global_mask, label=None):
+
+		if label is None:
+			label = self.semantic_class.id
+
 		mask_crop = global_mask[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 		mask_crop[self.mask] = label
 
@@ -139,6 +153,30 @@ class GrabCutInstance:
 		# print('tm(equal)    ', timeit.timeit('assign_equal()', globals=gl, number=n))
 		# #tm(reshape) 10.847654940000211
 		# #tm(equal) 18.054724517001887
+
+	def to_dict(self):
+		return dict(
+			id=self.id, cls=self.semantic_class.id,
+			crop_rect=self.crop_rect.tolist(), roi_rect = self.roi_rect.tolist(),
+		)
+
+	def save_to_dir(self, dir_path):
+		imageio.imwrite(dir_path / f'instance_{self.id:03d}_gc_mask.png', self.grab_cut_mask)
+		np.save(dir_path / f'instance_{self.id:03d}_gc_state.npy', self.grab_cut_state)
+
+	def load_from_dir(self, dir_path):
+		self.grab_cut_mask = imageio.imread(dir_path / f'instance_{self.id:03d}_gc_mask.png')
+		self.grab_cut_state = np.load(dir_path / f'instance_{self.id:03d}_gc_state.npy')
+		self.update_mask()
+
+	@staticmethod
+	def from_dict(saved_info, config, photo):
+
+		inst = GrabCutInstance(
+			saved_info['id'], config.classes_by_id[saved_info['cls']], photo,
+			np.array(saved_info['crop_rect']), np.array(saved_info['roi_rect']),
+		)
+		return inst
 
 
 class LabelOverlayImageProvider(QQuickImageProvider):
@@ -303,12 +341,19 @@ class LabelBackend(QObject):
 		self.image_provider.init_image(self.resolution)
 		self.overlay_data = self.image_provider.image_view
 
-		self.next_instance_id = 1
 		self.instances = []
-		self.instances_by_id = dict()
+
+		data_dir = self.img_path.with_suffix('.labels')
+		if data_dir.is_dir():
+			print(f'Loading saved state from {data_dir}')
+
+			self.load(data_dir)
+
+		self.next_instance_id = int(np.max([0] + [inst.id for inst in self.instances]) + 1)
+		self.instances_by_id = {inst.id: inst for inst in self.instances}
 		self.instance_selected = None
 
-		self.OverlayUpdated.emit()
+		self.overlay_refresh_after_selection_change()
 
 
 	@Slot(str)
@@ -404,7 +449,7 @@ class LabelBackend(QObject):
 				np.minimum(roi_rect[1] + margin, self.resolution),
 			])
 
-			instance = GrabCutInstance(self.next_instance_id, self.photo, crop_rect, roi_rect)
+			instance = GrabCutInstance(self.next_instance_id, self.config.classes[0], self.photo, crop_rect, roi_rect)
 			self.next_instance_id += 1
 			self.instances.append(instance)
 			self.instances_by_id[instance.id] = instance
@@ -432,12 +477,44 @@ class LabelBackend(QObject):
 	@Slot()
 	def save(self):
 
-		global_mask = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
+		# outputs
+		sem_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
+		sem_colorimg = np.zeros(tuple(self.resolution[::-1]) + (3,), dtype=np.uint8)
+		inst_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 
 		for inst_id, inst in enumerate(self.instances):
-			inst.draw_mask(global_mask)
+			inst.draw_mask(sem_map)
+			inst.draw_mask(sem_colorimg, inst.semantic_class.color)
+			inst.draw_mask(inst_map, inst_id+1)
 
-		path_base = self.img_path.parent / self.img_path.name
+		out_dir = self.img_path.with_suffix('.labels')
+		out_dir.mkdir(exist_ok=True)
 
-		imageio.imwrite(str(path_base) + '_labels.png', global_mask)
-		imageio.imwrite(str(path_base) + '_labelsV.png', 255 * (global_mask > 0))
+		imageio.imwrite(out_dir / 'labels_semantic.png', sem_map)
+		imageio.imwrite(out_dir / 'labels_semantic_color.png', sem_colorimg)
+		imageio.imwrite(out_dir / 'labels_instance.png', inst_map)
+
+		# internal state
+
+		json_data = dict(
+			instances = [inst.to_dict() for inst in self.instances]
+		)
+
+		with (out_dir / 'index.json').open('w') as f_out:
+			json.dump(json_data, f_out, indent='	')
+
+		for inst in self.instances:
+			inst.save_to_dir(out_dir)
+
+	def load(self, in_dir):
+		with (in_dir / 'index.json').open('r') as f_in:
+			json_data = json.load(f_in)
+
+		self.instances = [
+			GrabCutInstance.from_dict(inst_data, self.config, self.photo)
+			for inst_data in json_data['instances']
+		]
+
+		for inst in self.instances:
+			inst.load_from_dir(in_dir)
+

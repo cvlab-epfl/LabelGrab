@@ -68,7 +68,12 @@ ApplicationWindow {
 			anchors.fill: parent
 			spacing: 0
 
-			ToolButton { text: actionToggleOverlay.text; action: actionToggleOverlay	}
+			ToolButton {
+				text: actionToggleOverlay.text; action: actionToggleOverlay
+				background: Rectangle {
+					color: imageOverlay.visible ? "transparent" : "orangered"
+				}
+			}
 			ToolButton {
 				text: 'Tool 2'
 			}

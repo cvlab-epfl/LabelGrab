@@ -18,7 +18,7 @@ def bgr(r, g, b, a):
 	return (b, g, r, a)
 
 
-class GrabCutInstance:
+class GrabCutInstance(QObject):
 
 	COLOR_OBJ_SURE = bgr(40, 250, 10, 100)
 	COLOR_OBJ_GUESS = bgr(200, 200, 20, 50)
@@ -35,8 +35,9 @@ class GrabCutInstance:
 	MORPH_KERNEL = np.ones((3, 3), np.uint8)
 
 
-
 	def __init__(self, instance_id, semantic_class, photo, crop_rect, roi_rect):
+		super().__init__()
+
 		self.id = instance_id
 		self.semantic_class = semantic_class
 		self.photo = photo
@@ -52,6 +53,7 @@ class GrabCutInstance:
 
 		self.photo_crop = self.photo[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 
+		self.update_qt_info()
 
 	def grab_cut_init(self):
 		self.grab_cut_state = np.zeros((2,65), np.float64)
@@ -115,10 +117,9 @@ class GrabCutInstance:
 	def draw_overlay_contour(self, overlay):
 		overlay_crop = overlay[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 
-		class_color = self.semantic_class.color
-
-		overlay_crop[self.mask] = np.concatenate([class_color, [self.ALPHA_CLASS_COLOR]], axis=0)
-		overlay_crop[self.contour_where] = np.concatenate([class_color, [self.ALPHA_CONTOUR]], axis=0)
+		class_color_bgr = self.semantic_class.color[::-1]
+		overlay_crop[self.mask] = np.concatenate([class_color_bgr, [self.ALPHA_CLASS_COLOR]], axis=0)
+		overlay_crop[self.contour_where] = np.concatenate([class_color_bgr, [self.ALPHA_CONTOUR]], axis=0)
 
 	def draw_mask(self, global_mask, label=None):
 
@@ -174,6 +175,29 @@ class GrabCutInstance:
 		return inst
 
 
+	# Expose to Qt
+
+	infoChanged = Signal()
+	info = Property("QVariant", notify=infoChanged)
+	@info.getter
+	def getInfo(self):
+		return self.qt_info
+
+	def update_qt_info(self):
+		self.qt_info = dict(
+			id = self.id,
+			name = f'{self.id} {self.semantic_class.name}',
+			cls = self.semantic_class.to_dict(),
+			x = float(self.crop_tl[0] + self.roi_tl[0]),
+			y = float(self.crop_tl[1] + self.roi_tl[1]),
+			width = float(self.roi_br[0] - self.roi_tl[0]),
+			height = float(self.roi_br[1] - self.roi_tl[1]),
+		)
+		self.infoChanged.emit()
+
+	deleted = Signal()
+
+
 class LabelOverlayImageProvider(QQuickImageProvider):
 	QT_IMAGE_FORMAT = QImage.Format_ARGB32
 
@@ -187,127 +211,77 @@ class LabelOverlayImageProvider(QQuickImageProvider):
 		self.image_qt = QImage(int(resolution[0]), int(resolution[1]), self.QT_IMAGE_FORMAT)
 		self.image_view = qimage2ndarray.byte_view(self.image_qt, 'little')
 		# self.image_view = np.zeros((resolution[1], resolution[0], 4), np.uint8)
-		print(f'byte view {self.image_view.shape} {self.image_view.dtype}')
+		#print(f'byte view {self.image_view.shape} {self.image_view.dtype}')
 
 		self.image_view[:] = 0
 
 	def requestImage(self, id, size, requestedSize):
-		print(f'requested img name={id} size={size} reqSize={requestedSize}')
+		#print(f'requested img name={id} size={size} reqSize={requestedSize}')
 		return self.image_qt
 
 
-class InstanceGeometryInfo(QObject):
-	def __init__(self, name, num, d):
-		super().__init__()
-
-		self.name_ = name
-		self.num_ = num
-		self.d = d
-
-
-	xChanged = Signal()
-	x = Property(float, notify=xChanged)
-	
-	@x.getter
-	def getX(self):
-		return float(self.d.crop_tl[0] + self.d.roi_tl[0])
-
-	yChanged = Signal()
-	y = Property(float, notify=yChanged)
-	
-	@y.getter
-	def getX(self):
-		return float(self.d.crop_tl[1] + self.d.roi_tl[1])
-
-	widthChanged = Signal()
-	width = Property(float, notify=widthChanged)
-	@width.getter
-	def getWidth(self):
-		return float(self.d.roi_br[0] - self.d.roi_tl[0])
-
-	heightChanged = Signal()
-	height = Property(float, notify=heightChanged)
-	@height.getter
-	def getHeight(self):
-		return float(self.d.roi_br[1] - self.d.roi_tl[1])
-
-
-	nameChanged = Signal()
-	name = Property(str, attrgetter('name_'),notify=nameChanged)
-	
-	@name.setter
-	def setName(self, value):
-		self.name_ = value
-		self.nameChanged.emit()
-	
-	numChanged = Signal()
-	num = Property(int, attrgetter('num_'), notify=numChanged)
-	
-	@num.setter
-	def setName(self, value):
-		self.num_ = value
-		self.numChanged.emit()
-
-
 class LabelConfig:
+	class SemanticClass:
+		def __init__(self, id, name, color):
+			self.id = id
+			self.name = name
+			self.color = self.convert_color(color)
 
-	SemanticClass = namedtuple('LabelClass', ['id', 'name', 'color'])
+		def __repr__(self):
+			return f'{self.id}_{self.name}'
+
+		def to_dict(self):
+			return {'id': self.id, 'name': self.name, 'color': QColor(*self.color)}
+
+		@staticmethod
+		def convert_color(color_json):
+
+			# named color
+			if isinstance(color_json, str):
+
+				qc = QColor(color_json.lower())
+
+				if qc.isValid():
+					return np.array(qc.toTuple(), dtype=np.uint8)[:3]
+				else:
+					# http://doc.qt.io/qt-5/qml-color.html
+					raise ValueError(f'Invalid color name {color_json}, please use SVG names')
+
+			else:
+				color = np.array(color_json)
+
+				if color.__len__() != 3:
+					raise ValueError(f'Color should be [r, g, b] but received wrong length: {color_json}')
+
+				if issubclass(color.dtype, np.floating):
+					color *= 255
+
+				return color.astype(np.uint8)
 
 	def __init__(self):
 		self.set_classes([
-			self.SemanticClass(2, 'anomaly', self.convert_color('orangered'))
+			self.SemanticClass(2, 'anomaly', 'orangered'),
 		])
 
 	def set_classes(self, classes):
 		self.classes = classes
 		self.classes_by_id = {cls.id: cls for cls in classes}
 
-	@staticmethod
-	def convert_color(color_json):
-
-		# named color
-		if isinstance(color_json, str):
-
-			qc = QColor(color_json.lower())
-
-			if qc.isValid():
-				return np.array(qc.toTuple(), dtype=np.uint8)[:3]
-			else:
-				# http://doc.qt.io/qt-5/qml-color.html
-				raise ValueError(f'Invalid color name {color_json}, please use SVG names')
-
-		else:
-			color = np.array(color_json)
-
-			if color.__len__() != 3:
-				raise ValueError(f'Color should be [r, g, b] but received wrong length: {color_json}')
-
-			if issubclass(color.dtype, np.floating):
-				color *= 255
-
-			return color.astype(np.uint8)
-
-
 	def load_from_path(self, path):
 		with Path(path).open('r') as f_in:
 			content_json = json.load(f_in)
 
 		self.set_classes([
-			self.SemanticClass(cls_json['id'], cls_json['name'], self.convert_color(cls_json['color']))
+			self.SemanticClass(cls_json['id'], cls_json['name'], cls_json['color'])
 			for cls_json in content_json['classes']
 		])
 
 	def to_simple_objects(self):
-		return [
-			{'id': cls.id, 'name': cls.name, 'color': QColor(*cls.color)}
-			for cls in self.classes
-		]
+		return [cls.to_dict() for cls in self.classes]
 
 
 class LabelBackend(QObject):
 
-	OverlayUpdated = Signal()
-	instanceAdded = Signal(QObject)
 
 	@staticmethod
 	def qml_point_to_np(qpoint : QPointF):
@@ -320,22 +294,13 @@ class LabelBackend(QObject):
 			qrect.bottomRight().toTuple(),
 		])
 
-	# @staticmethod
-	# def list_to_qml(values, qml_engine):
-	# 	array = qml_engine.newArray(values.__len__())
-
-	# 	for idx, value in enumerate(values):
-	# 		array.setProperty(idx, value)
-
-	# 	return array
-
-	# @staticmethod
-	# def 
-
 	def __init__(self):
 		super().__init__()
-		self.image_provider = LabelOverlayImageProvider()
 
+		self.instances = []
+		self.instances_by_id = {}
+
+		self.image_provider = LabelOverlayImageProvider()
 		self.config = LabelConfig()
 
 	# Semantic classes
@@ -345,39 +310,37 @@ class LabelBackend(QObject):
 		else:
 			print(f'Config path {cfg_path} is not a file')
 
-	classesUpdated = Signal()
-	classes = Property('QVariant', notify=classesUpdated)
-	@classes.getter
-	def get_classes(self):
-		return self.config.to_simple_objects()
 
 	def set_image_path(self, img_path):
 		print('Loading image', img_path)
 
+		# Load new image
 		self.img_path = Path(img_path)
 		self.photo = imageio.imread(self.img_path)
 		self.resolution = np.array(self.photo.shape[:2][::-1])
-
 		self.image_provider.init_image(self.resolution)
 		self.overlay_data = self.image_provider.image_view
 
+		# Clear instances
+		for old_inst in self.instances:
+			old_inst.deleted.emit()
 		self.instances = []
+		self.instances_by_id = {}
 
+		# Load state
 		data_dir = self.img_path.with_suffix('.labels')
 		if data_dir.is_dir():
 			print(f'Loading saved state from {data_dir}')
-
 			self.load(data_dir)
 
 		self.next_instance_id = int(np.max([0] + [inst.id for inst in self.instances]) + 1)
 		self.instances_by_id = {inst.id: inst for inst in self.instances}
 		self.instance_selected = None
-
 		self.overlay_refresh_after_selection_change()
 
 
 	@Slot(str)
-	def setImage(self, path):
+	def set_image(self, path):
 		path_prefix = "file://"
 		if path.startswith(path_prefix):
 			path = path[path_prefix.__len__():]
@@ -428,22 +391,20 @@ class LabelBackend(QObject):
 			self.instance_selected.draw_overlay_edit_interface(self.overlay_data)
 
 		else:
-
 			self.overlay_data[:] = 0
 
 			for inst in self.instances:
 				inst.draw_overlay_contour(self.overlay_data)
 
-		self.OverlayUpdated.emit()
-
+		self.overlayUpdated.emit()
+		self.selectedUpdate.emit()
 
 	def overlay_refresh_after_edit(self):
 		if self.instance_selected:
 			self.instance_selected.draw_overlay_edit_interface(self.overlay_data)
-			self.OverlayUpdated.emit()
+			self.overlayUpdated.emit()
 		else:
 			print('overlay_refresh_after_edit but instance_selected is null')
-
 
 	@Slot(int)
 	def select_instance(self, instance_id):
@@ -457,11 +418,11 @@ class LabelBackend(QObject):
 
 		self.overlay_refresh_after_selection_change()
 
-	@Slot(QRectF)
-	def new_instance(self, roi_rect_qt):
+	@Slot(QRectF, int)
+	def new_instance(self, roi_rect_qt, sem_class_id):
 		try: # this has to finish, we don't want to break UI interaction
 			roi_rect = np.rint(self.qml_rect_to_np(roi_rect_qt)).astype(np.int)
-			print('new instance!', roi_rect)
+			sem_class = self.config.classes_by_id.get(sem_class_id, self.config.classes[0])
 
 			margin = 32
 			crop_rect = np.array([
@@ -469,7 +430,7 @@ class LabelBackend(QObject):
 				np.minimum(roi_rect[1] + margin, self.resolution),
 			])
 
-			instance = GrabCutInstance(self.next_instance_id, self.config.classes[0], self.photo, crop_rect, roi_rect)
+			instance = GrabCutInstance(self.next_instance_id, sem_class, self.photo, crop_rect, roi_rect)
 			self.next_instance_id += 1
 			self.instances.append(instance)
 			self.instances_by_id[instance.id] = instance
@@ -478,21 +439,43 @@ class LabelBackend(QObject):
 
 			self.select_instance(instance.id)
 
+			self.instanceAdded.emit(instance)
+
 		except Exception as e:
 			print('Error in new_instance:', e)
 			traceback.print_exc()
 
+	@Slot(int, int)
+	def set_instance_class(self, instance_id, class_id):
+		try:  # this has to finish, we don't want to break UI interaction
+			inst = self.instances_by_id[instance_id]
+			cls = self.config.classes_by_id[class_id]
+
+			inst.semantic_class = cls
+			inst.update_qt_info()
+			self.overlay_refresh_after_selection_change()
+
+		except Exception as e:
+			print('Error in set_instance_class:', e)
+			traceback.print_exc()
+
 	@Slot(int)
 	def delete_instance(self, instance_id):
-		inst = self.instances_by_id[instance_id]
+		try:  # this has to finish, we don't want to break UI interaction
+			inst = self.instances_by_id[instance_id]
 
-		if self.instance_selected == inst:
-			self.select_instance(-1)
+			if self.instance_selected == inst:
+				self.select_instance(0)
 
-		del self.instances_by_id[instance_id]
-		self.instances.remove(inst)
-		self.overlay_refresh_after_selection_change()
+			del self.instances_by_id[instance_id]
+			self.instances.remove(inst)
 
+			inst.deleted.emit()
+			self.overlay_refresh_after_selection_change()
+
+		except Exception as e:
+			print('Error in delete_instance:', e)
+			traceback.print_exc()
 
 	@Slot()
 	def save(self):
@@ -537,4 +520,21 @@ class LabelBackend(QObject):
 
 		for inst in self.instances:
 			inst.load_from_dir(in_dir)
+
+	# Expose to Qt
+	overlayUpdated = Signal()
+	instanceAdded = Signal(QObject)
+
+	classesUpdated = Signal()
+	classes = Property('QVariant', notify=classesUpdated)
+	@classes.getter
+	def get_classes(self):
+		return self.config.to_simple_objects()
+
+	@Slot(result='QVariant')
+	def get_instances(self):
+		return self.instances
+
+	selectedUpdate = Signal()
+	selected = Property(QObject, attrgetter('instance_selected'), notify=selectedUpdate)
 

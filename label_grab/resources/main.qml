@@ -3,12 +3,19 @@ import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
 import QtQuick.Dialogs 1.1
 import QtQuick.Shapes 1.11
+import QtQuick.Window 2.2
+import QtQuick.Controls.Universal 2.12
+
 
 ApplicationWindow {
 	id: window
 	title: "Label Grab"
 	visible: true
-	width: 1024; height: 720
+	width: Screen.width
+	height: Screen.height
+
+	Universal.theme: Universal.Dark
+	Universal.accent: Universal.Violet
 
 	menuBar: MenuBar {
 		Menu {
@@ -23,14 +30,14 @@ ApplicationWindow {
 			MenuSeparator { }
 			Action { text: qsTr("&Quit"); icon.name: "quit"; onTriggered: Qt.quit() }
 		}
-		Menu {
-			title: qsTr("&Edit")
+//		Menu {
+//			title: qsTr("&Edit")
 
-			Action { text: qsTr("&New instance"); shortcut: StandardKey.New; icon.name: "edit-new" }
+//			//Action { text: qsTr("&New instance"); shortcut: StandardKey.New; icon.name: "edit-new" }
 
-			//Action { text: qsTr("Undo"); icon.name: "edit-undo"; shortcut: StandardKey.Undo }
-			//Action { text: qsTr("Redo"); icon.name: "edit-redo"; shortcut: StandardKey.Redo }
-		}
+//			//Action { text: qsTr("Undo"); icon.name: "edit-undo"; shortcut: StandardKey.Undo }
+//			//Action { text: qsTr("Redo"); icon.name: "edit-redo"; shortcut: StandardKey.Redo }
+//		}
 		Menu {
 			title: qsTr("&View")
 
@@ -52,7 +59,7 @@ ApplicationWindow {
 
 		onAccepted: {
 			console.log("You chose: " + openFileDialog.fileUrls);
-			backend.setImage(openFileDialog.fileUrl);
+			backend.set_image(openFileDialog.fileUrl);
 			imagePhoto.source = openFileDialog.fileUrl;
 
 			imageContainer.resetTransform();
@@ -65,7 +72,8 @@ ApplicationWindow {
 	header: ToolBar {
 		RowLayout {
 			id: headerRowLayout
-			anchors.fill: parent
+			//anchors.fill: parent
+			Layout.alignment: Qt.AlignLeft
 			spacing: 0
 
 			ToolButton {
@@ -81,32 +89,49 @@ ApplicationWindow {
 				ToolButton {
 					property var cls
 					property var hotkey
+					property bool isCurrent: {
+						if(! backend.selected ) {
+							return false;
+						}
+						return backend.selected.info.cls.id === cls.id;
+					}
+
 					text: cls.name + ((hotkey !== null) ? (" [" + hotkey + "]")  : "")
 
 					background: Rectangle {
 						color: "transparent"
 						border.color: cls.color
-						border.width: 3
+						border.width: isCurrent ? 5 : 1
 					}
 
 					action: Action {
 						shortcut: hotkey
 						onTriggered: {
-							console.log('set sem class', cls.id)
-							//backend.setSemanticClass(cls.id);
+							const clsid = cls.id;
+
+							if(backend.selected !== null) {
+								backend.set_instance_class(backend.selected.info.id, clsid);
+							}
+							viewportMouse.last_used_class_id = clsid;
 						}
 					}
 				}
 			}
 
-			Item {
-				Layout.fillWidth: true
-			}
+//			Item {
+//				Layout.row: 100
+//				Layout.column: 100
+//				Layout.fillWidth: true
+//			}
 		}
 
 		Component.onCompleted: {
 			const classes = backend.classes;
 			const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+
+			if(classes.length > 0) {
+				viewportMouse.last_used_class_id = classes[0].id;
+			}
 
 			for (var i = 0; i < classes.length; i++) {
 				classButton.createObject(headerRowLayout, {
@@ -128,10 +153,6 @@ ApplicationWindow {
 			Layout.fillHeight: true
 
 			color: '#2a2a2a'
-
-			focus: true
-
-			Keys.onEscapePressed: backend.select_instance(0);
 
 			Item {
 				id: imageContainer
@@ -184,7 +205,7 @@ ApplicationWindow {
 						const base_url = this.source + '#';
 						var suffix = 0;
 
-						backend.OverlayUpdated.connect(function() {
+						backend.overlayUpdated.connect(function() {
 							imageOverlay.source = base_url + suffix;
 							suffix = 1 - suffix;
 						})
@@ -277,8 +298,7 @@ ApplicationWindow {
 				property point last_polygon_click
 				property int label_to_paint: 1
 				property var polygon_points: []
-
-				focus: true
+				property int last_used_class_id: 1
 
 				anchors.fill: parent
 				acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
@@ -293,7 +313,7 @@ ApplicationWindow {
 
 					const m_img = this.mapToItem(imagePhoto, event.x, event.y);
 
-					if(event.button === Qt.MiddleButton) {
+					if(event.button === Qt.MiddleButton || (event.button === Qt.RightButton && !backend.selected)) {
 						/*
 						Dragging moves the image container to:
 							container.pos = container.initial_position + mouse_position_current - mouse_position_at_start
@@ -308,21 +328,24 @@ ApplicationWindow {
 
 					} else {
 						if(event.button === Qt.LeftButton) {
-							this.label_to_paint = 1;
+							if ( event.modifiers & Qt.AltModifier ) {
+								this.label_to_paint = 0;
+							} else {
+								this.label_to_paint = 1;
+							}
 						}
 						else if (event.button === Qt.RightButton) {
 							this.label_to_paint = 0;
 						}
 
-
 						if ( event.modifiers & Qt.ShiftModifier ) {
 							this.rect_origin = Qt.point(event.x, event.y);
-							this.state = "rect";
+							this.state = "new_instance";
 						}
-						else if ( event.modifiers & Qt.ControlModifier ) {
+						else if ( event.modifiers & Qt.ControlModifier  && backend.selected) {
 							backend.paint_circle(this.label_to_paint, m_img);
 						}
-						else
+						else if ( backend.selected ) // draw polygon only if we have a selected instance
 						{
 							this.polygon_points.length = 0;
 							this.polygon_points.push(m_img);
@@ -332,8 +355,7 @@ ApplicationWindow {
 					}
 				}
 
-				function cancel_action() {
-					console.log('cancel');
+				function cancel_action() {;
 					this.state = "";
 				}
 
@@ -344,15 +366,47 @@ ApplicationWindow {
 					this.state = "";
 				}
 
-				property var key_pressed: function() {}
+				property var key_cancel: function(event) {
+					backend.select_instance(0);
+				}
 
-				property var key_released: function() {}
-
+				property var key_confirm: function(event) {}
 
 				onExited: cancel_action()
 
-				Keys.onPressed: key_pressed(event)
-				Keys.onReleased: key_released(event)
+				Shortcut {
+					sequence: "Esc"
+					onActivated: viewportMouse.key_cancel();
+				}
+
+				Shortcut {
+					sequence: "Return"
+					onActivated: viewportMouse.key_confirm();
+				}
+
+				Shortcut {
+					sequence: "Del"
+					onActivated: {
+						if(backend.selected !== null) {
+							deleteDialog.instance_info = backend.selected.info;
+							deleteDialog.open();
+						} else {
+							console.log('Delete: no instance selected');
+						}
+					}
+				}
+
+				Dialog {
+					id: deleteDialog
+					property var instance_info: {name: 'not initialized'}
+
+					title: "Delete instance " + instance_info.name + "?"
+
+					standardButtons: Dialog.Ok | Dialog.Cancel
+
+					onAccepted: backend.delete_instance(instance_info.id);
+					onRejected: console.log("Cancel delete")
+				}
 
 				states: [
 					State{
@@ -391,12 +445,12 @@ ApplicationWindow {
 							onDoubleClicked: function(event) {
 								this.finalize_polygon();
 							}
-							key_pressed: function(event) {
-								if (event.key === Qt.Key_Return) {
-									this.finalize_polygon();
-								} else if ( event.key === Qt.Key_Escape) {
-									this.cancel_action();
-								}
+							key_cancel: function(event) {
+								console.log('cancel polygon');
+								this.cancel_action();
+							}
+							key_confirm: function(event) {
+								this.finalize_polygon();
 							}
 						}
 						StateChangeScript {
@@ -413,7 +467,7 @@ ApplicationWindow {
 					},
 
 					State{
-						name: "rect"
+						name: "new_instance"
 						PropertyChanges {
 							target: roiRect
 							visible: true
@@ -436,7 +490,7 @@ ApplicationWindow {
 									Math.abs(viewportMouse.mouseY - viewportMouse.rect_origin.y),
 								);
 
-								backend.new_instance(re);
+								backend.new_instance(re, viewportMouse.last_used_class_id);
 								this.cancel_action();
 							}
 						}
@@ -452,8 +506,58 @@ ApplicationWindow {
 			Layout.preferredWidth: 150
 			Layout.fillHeight: true
 
-			ColumnLayout {
+			color: Universal.foreground
+			border.width: 0
 
+			ColumnLayout {
+				id: sidebarInstances
+				width: parent.width
+				//anchors.fill
+
+				Label {
+					text: "Instances"
+				}
+
+				Component {
+					id: sidebarInstanceTemplate
+
+					Button {
+						property var instance
+						text: instance.info.id + " " + instance.info.cls.name
+						Layout.fillWidth: true
+
+						background: Rectangle {
+							color: "transparent"
+							border.color: instance.info.cls.color
+							border.width: 2
+						}
+
+						onClicked: {
+							backend.select_instance(instance.info.id);
+						}
+
+						Component.onCompleted: {
+							instance.deleted.connect(function() {
+								destroy();
+							});
+						}
+					}
+				}
+			}
+
+			Component.onCompleted: {
+				function on_new_instance(inst) {
+					sidebarInstanceTemplate.createObject(sidebarInstances, {
+						instance: inst,
+					});
+				}
+
+				const insts = backend.get_instances();
+				for(var idx = 0; idx < insts.length; idx++) {
+					on_new_instance(insts[idx]);
+				}
+
+				backend.instanceAdded.connect(on_new_instance);
 			}
 		}
 	}

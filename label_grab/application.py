@@ -17,7 +17,7 @@ DIR_RESOURCES = DIR_SOURCE / 'resources'
 def main(config):
 	# Set default style to "fusion"
 	# https://doc.qt.io/qt-5/qtquickcontrols2-styles.html#using-styles-in-qt-quick-controls-2
-	os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'fusion')
+	#os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'fusion')
 
 	qt_app = QGuiApplication(sys.argv)
 	qt_app.setOrganizationName("EPFL")

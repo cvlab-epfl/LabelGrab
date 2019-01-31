@@ -101,16 +101,11 @@ class GrabCutInstance:
 
 		self.update_mask()
 
-
 	def update_mask(self):
 		self.mask = (self.grab_cut_mask == cv2.GC_FGD) | (self.grab_cut_mask == cv2.GC_PR_FGD)
-
-
 		erosion = cv2.erode(self.mask.astype(np.uint8), self.MORPH_KERNEL, iterations=1).astype(np.bool)
-
 		self.contour_mask = self.mask & ~erosion
 		self.contour_where = np.where(self.contour_mask)
-
 
 	def draw_overlay_edit_interface(self, overlay):
 		overlay_crop = overlay[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
@@ -122,8 +117,8 @@ class GrabCutInstance:
 
 		class_color = self.semantic_class.color
 
-		overlay_crop[self.mask] = np.concatenate([class_color, [self.ALPHA_CONTOUR]], axis=0)
-		overlay_crop[self.contour_where] = np.concatenate([class_color, [self.ALPHA_CLASS_COLOR]], axis=0)
+		overlay_crop[self.mask] = np.concatenate([class_color, [self.ALPHA_CLASS_COLOR]], axis=0)
+		overlay_crop[self.contour_where] = np.concatenate([class_color, [self.ALPHA_CONTOUR]], axis=0)
 
 	def draw_mask(self, global_mask, label=None):
 
@@ -302,6 +297,12 @@ class LabelConfig:
 			for cls_json in content_json['classes']
 		])
 
+	def to_simple_objects(self):
+		return [
+			{'id': cls.id, 'name': cls.name, 'color': QColor(*cls.color)}
+			for cls in self.classes
+		]
+
 
 class LabelBackend(QObject):
 
@@ -319,17 +320,36 @@ class LabelBackend(QObject):
 			qrect.bottomRight().toTuple(),
 		])
 
+	# @staticmethod
+	# def list_to_qml(values, qml_engine):
+	# 	array = qml_engine.newArray(values.__len__())
+
+	# 	for idx, value in enumerate(values):
+	# 		array.setProperty(idx, value)
+
+	# 	return array
+
+	# @staticmethod
+	# def 
+
 	def __init__(self):
 		super().__init__()
 		self.image_provider = LabelOverlayImageProvider()
 
 		self.config = LabelConfig()
 
+	# Semantic classes
 	def load_config(self, cfg_path):
 		if cfg_path.is_file():
 			self.config.load_from_path(cfg_path)
 		else:
 			print(f'Config path {cfg_path} is not a file')
+
+	classesUpdated = Signal()
+	classes = Property('QVariant', notify=classesUpdated)
+	@classes.getter
+	def get_classes(self):
+		return self.config.to_simple_objects()
 
 	def set_image_path(self, img_path):
 		print('Loading image', img_path)

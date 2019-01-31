@@ -74,12 +74,45 @@ ApplicationWindow {
 					color: imageOverlay.visible ? "transparent" : "orangered"
 				}
 			}
-			ToolButton {
-				text: 'Tool 2'
+
+			Component {
+				id: classButton
+
+				ToolButton {
+					property var cls
+					property var hotkey
+					text: cls.name + ((hotkey !== null) ? (" [" + hotkey + "]")  : "")
+
+					background: Rectangle {
+						color: "transparent"
+						border.color: cls.color
+						border.width: 3
+					}
+
+					action: Action {
+						shortcut: hotkey
+						onTriggered: {
+							console.log('set sem class', cls.id)
+							//backend.setSemanticClass(cls.id);
+						}
+					}
+				}
 			}
 
 			Item {
 				Layout.fillWidth: true
+			}
+		}
+
+		Component.onCompleted: {
+			const classes = backend.classes;
+			const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+
+			for (var i = 0; i < classes.length; i++) {
+				classButton.createObject(headerRowLayout, {
+					cls: classes[i],
+					hotkey: (i < keys.length) ? keys[i] : null,
+				});
 			}
 		}
 	}
@@ -245,6 +278,8 @@ ApplicationWindow {
 				property int label_to_paint: 1
 				property var polygon_points: []
 
+				focus: true
+
 				anchors.fill: parent
 				acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 				hoverEnabled: true
@@ -343,7 +378,6 @@ ApplicationWindow {
 						name: "draw_polygon"
 						PropertyChanges{
 							target: viewportMouse
-							focus: true
 
 							onPressed: function(event) {
 								if(!( event.x === last_polygon_click.x && event.y === last_polygon_click.y )) {

@@ -20,6 +20,8 @@ def bgr(r, g, b, a):
 
 class GrabCutInstance(QObject):
 
+	GRAB_CUT_NUM_ITER = 5
+
 	COLOR_OBJ_SURE = bgr(40, 250, 10, 100)
 	COLOR_OBJ_GUESS = bgr(200, 200, 20, 50)
 	COLOR_OBJ_CONTOUR = bgr(0, 255, 0, 200)
@@ -55,18 +57,33 @@ class GrabCutInstance(QObject):
 
 		self.update_qt_info()
 
-	def grab_cut_init(self):
+	def grab_cut_init(self, existing_instance_mask_global=None):
+
 		self.grab_cut_state = np.zeros((2,65), np.float64)
 
 		self.grab_cut_mask = np.zeros(self.photo_crop.shape[:2], dtype=np.uint8)
+		
 		cv2.grabCut(
 			self.photo_crop,
 			self.grab_cut_mask,
 			tuple(np.concatenate([self.roi_tl, self.roi_br-self.roi_tl], axis=0)),
 			self.grab_cut_state[0:1],
 			self.grab_cut_state[1:2],
-			5, cv2.GC_INIT_WITH_RECT,
+			self.GRAB_CUT_NUM_ITER, cv2.GC_INIT_WITH_RECT,
 		)
+
+		# exclude previously existing instances
+		if existing_instance_mask_global is not None:
+			# we do not do it in the single init step, because if we use the "init with mask" mode
+			# grab-cut expects to have BOTH negative and positive samples and crashes on an assert
+			#  - but we only have negative samples
+			# therefore, we will now perform another step but with the negative samples
+			existing_instance_mask_crop = existing_instance_mask_global[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
+
+			if np.any(existing_instance_mask_crop):
+				self.grab_cut_mask[np.where(existing_instance_mask_crop)] = cv2.GC_BGD
+				print('new instance with mask', np.count_nonzero(existing_instance_mask_crop))
+				self.grab_cut_update()
 
 		self.update_mask()
 
@@ -78,7 +95,7 @@ class GrabCutInstance(QObject):
 			None,
 			self.grab_cut_state[0:1],
 			self.grab_cut_state[1:2],
-			5, cv2.GC_INIT_WITH_MASK,
+			self.GRAB_CUT_NUM_ITER, cv2.GC_INIT_WITH_MASK,
 		)
 
 		self.update_mask()
@@ -430,13 +447,18 @@ class LabelBackend(QObject):
 				np.minimum(roi_rect[1] + margin, self.resolution),
 			])
 
+			# automatically mark existing instances as excluded from the new instance
+			existing_instance_mask = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
+			for inst in self.instances:
+				inst.draw_mask(existing_instance_mask, 1)
+
 			instance = GrabCutInstance(self.next_instance_id, sem_class, self.photo, crop_rect, roi_rect)
 			self.next_instance_id += 1
+
+			instance.grab_cut_init(existing_instance_mask)
+
 			self.instances.append(instance)
 			self.instances_by_id[instance.id] = instance
-
-			instance.grab_cut_init()
-
 			self.select_instance(instance.id)
 
 			self.instanceAdded.emit(instance)

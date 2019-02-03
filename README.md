@@ -5,6 +5,8 @@ Annotation tool for semantic and instance segmentation,
 with automated help from the [GrabCut](https://cvg.ethz.ch/teaching/cvl/2012/grabcut-siggraph04.pdf) algorithm [implemented in OpenCV](https://docs.opencv.org/4.0.1/d8/d83/tutorial_py_grabcut.html).
 
 
+<img src="doc/label_grab_example.jpg" />
+
 ## Installation
 Install the following python modules:
 ```
@@ -68,9 +70,11 @@ The new instance will be initialized and you can now edit the instance's mask.
 	You can correct this mask by marking areas which should be included or excluded from the object.
 	GrabCut will update its suggestion based on your markings.
 
-	* If there is a area that should be part of the mask, but is not, mark is as "sure object": *left*-click on points to draw a polygon (or `Alt` + click to mark a circle at cursor position). The "sure object" areas will be denoted by a green overlay. Cancel the polygon by pressing `Esc`
+	* If there is a area that should be part of the mask, but is not, mark is as "sure object": *left*-click on points to draw a polygon and *double*-click to finish the polygon. Alternatively, `Alt` + click to mark a circle at cursor position. 	
+	The "sure object" areas will be denoted by a green overlay. Cancel the polygon by pressing `Esc`
 
-	* If there is a area that should be part of the mask, but is not, mark is as "sure background": *right*-click on points to draw a polygon (or `Alt` + click to mark a circle at cursor position). The "sure object" areas will be denoted by a red overlay.
+	* If there is a area that should be part of the mask, but is not, mark is as "sure background": *right*-click on points to draw a polygon *double*-click to finish the polygon. Alternatively, `Alt` + click to mark a circle at cursor position.
+	The "sure background" areas will be denoted by a red overlay.
 
 * **Choose the semantic class** of the currently selected instance using the buttons on the top bar (or corresponding keys `1`, `2`, ...)
 
@@ -79,3 +83,7 @@ The new instance will be initialized and you can now edit the instance's mask.
 * **Select** which instance is selected from the instance list on right.
 
 * **View all instances** by pressing `Esc`
+
+------
+
+The example image by Arno van den Tillaart under [CC-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/deed.en) license, obtained from [wikimedia commons](https://commons.wikimedia.org/wiki/File:E6_near_Kv%C3%A6nangen.jpg).

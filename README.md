@@ -8,7 +8,11 @@ The algorithm attempts to find the foreground object in a user-selected bounding
 It presents a suggested per-pixel mask, the user can then correct its mistakes and next suggestion
 will take those into account.
 
+[**Watch the demo video**](https://www.youtube.com/watch?v=w8JAfPiU81c)
+
+<a href="https://www.youtube.com/watch?v=w8JAfPiU81c">
 <img src="doc/label_grab_example.jpg" />
+</a>
 
 ## Installation
 Install the following python modules:

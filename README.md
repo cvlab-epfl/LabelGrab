@@ -4,6 +4,9 @@
 Annotation tool for semantic and instance segmentation,
 with automated help from the [GrabCut](https://cvg.ethz.ch/teaching/cvl/2012/grabcut-siggraph04.pdf) algorithm [implemented in OpenCV](https://docs.opencv.org/4.0.1/d8/d83/tutorial_py_grabcut.html).
 
+The algorithm attempts to find the foreground object in a user-selected bounding box.
+It presents a suggested per-pixel mask, the user can then correct its mistakes and next suggestion
+will take those into account.
 
 <img src="doc/label_grab_example.jpg" />
 
@@ -13,7 +16,7 @@ Install the following python modules:
 pip install numpy opencv-python imageio click qtpy pyside2 qimage2ndarray
 ```
 
-It also needs Qt 5.11 libraries on the system.
+It also needs Qt 5.11 or higher libraries on the system.
 On Linux, these are in the repositories.
 
 On Windows, they can be downloaded [here](https://www.qt.io/download-qt-installer). 
@@ -25,6 +28,15 @@ where `Qt` is the installation directory.
 
 We plan to package all the necessary files with [pyinstaller](https://www.pyinstaller.org/).
 
+#### Conflict with `conda` installation
+
+If you have a `conda` python installation, it may happen that you have conda `qt` and `pyqt` packages installed (they get installed together with unrelated libraries like matplotlib).
+These packages have an old Qt version and cause this program to crash.
+There are several ways to solve this:
+
+* Remove the packages from conda if you don't need them: `conda remove qt pyqt --force`
+
+* Create a new conda environment and install the packages from pip using the command above.
 
 
 ## Usage

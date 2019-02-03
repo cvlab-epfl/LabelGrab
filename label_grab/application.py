@@ -11,7 +11,7 @@ DIR_SOURCE =  Path(__file__).parent
 DIR_RESOURCES = DIR_SOURCE / 'resources'
 
 @click.command()
-@click.option('--config', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=DIR_RESOURCES / 'config' / 'default_classes.json')
+@click.option('--config', type=click.Path(exists=True, dir_okay=False), default=DIR_RESOURCES / 'config' / 'default_classes.json')
 # @click.option('--dir_in', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 # @click.option('--dir_out', type=click.Path(file_okay=False, dir_okay=True, path_type=Path), default=None)
 def main(config):
@@ -31,7 +31,7 @@ def main(config):
 
 	# Register backend classes
 	backend = LabelBackend()
-	backend.load_config(config)
+	backend.load_config(Path(config))
 	backend.set_image_path(DIR_RESOURCES / 'images' / 'test.jpg')
 	qml_engine.rootContext().setContextProperty('backend', backend)
 

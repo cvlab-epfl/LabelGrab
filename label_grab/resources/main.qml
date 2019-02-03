@@ -273,7 +273,6 @@ ApplicationWindow {
 							new_list.push(segmentToBeginning);
 
 							brushPolygonPath.pathElements = new_list;
-							console.log(brushPolygonPath.pathElements.length);
 						}
 
 						function finish() {
@@ -309,11 +308,11 @@ ApplicationWindow {
 				}
 
 				onPressed: function(event) {
-					console.log('press', event.button, 'at', event.x, event.y)//, ' img', m_img);
+					//console.log('press', event.button, 'at', event.x, event.y)//, ' img', m_img);
 
 					const m_img = this.mapToItem(imagePhoto, event.x, event.y);
 
-					if(event.button === Qt.MiddleButton || (event.button === Qt.RightButton && !backend.selected)) {
+					if(event.button === Qt.MiddleButton || event.modifiers & Qt.ControlModifier || (event.button === Qt.RightButton && !backend.selected)) {
 						/*
 						Dragging moves the image container to:
 							container.pos = container.initial_position + mouse_position_current - mouse_position_at_start
@@ -328,11 +327,7 @@ ApplicationWindow {
 
 					} else {
 						if(event.button === Qt.LeftButton) {
-							if ( event.modifiers & Qt.AltModifier ) {
-								this.label_to_paint = 0;
-							} else {
-								this.label_to_paint = 1;
-							}
+							this.label_to_paint = 1;
 						}
 						else if (event.button === Qt.RightButton) {
 							this.label_to_paint = 0;
@@ -342,7 +337,7 @@ ApplicationWindow {
 							this.rect_origin = Qt.point(event.x, event.y);
 							this.state = "new_instance";
 						}
-						else if ( event.modifiers & Qt.ControlModifier  && backend.selected) {
+						else if ( event.modifiers & Qt.AltModifier  && backend.selected) {
 							backend.paint_circle(this.label_to_paint, m_img);
 						}
 						else if ( backend.selected ) // draw polygon only if we have a selected instance
@@ -422,11 +417,6 @@ ApplicationWindow {
 								imageTranslation.y = this.move_offset.y + event.y*scale_inv;
 							}
 						}
-						StateChangeScript {
-							script: {
-								console.log('entered state')
-							}
-						}
 					},
 					State{
 						name: "draw_polygon"
@@ -453,12 +443,6 @@ ApplicationWindow {
 								this.finalize_polygon();
 							}
 						}
-						StateChangeScript {
-							script: {
-								console.log('ENTER draw polygon')
-							}
-
-						}
 						PropertyChanges{
 							target: brushPolygon
 
@@ -481,7 +465,7 @@ ApplicationWindow {
 							target: viewportMouse
 
 							onReleased: function(event) {
-								console.log('Set roi', this.rect_origin, ' to ', event.x, event.y, Qt.rect);
+								console.log('New instance', this.rect_origin, ' to ', event.x, event.y, Qt.rect);
 
 								const re = viewportMouse.mapToItem(imagePhoto,
 									Math.min(viewportMouse.mouseX, viewportMouse.rect_origin.x),

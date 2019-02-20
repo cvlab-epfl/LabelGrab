@@ -60,17 +60,37 @@ class GrabCutInstance(QObject):
 	def grab_cut_init(self, existing_instance_mask_global=None):
 
 		self.grab_cut_state = np.zeros((2,65), np.float64)
+		self.grab_cut_mask = np.full(self.photo_crop.shape[:2], cv2.GC_PR_BGD, dtype=np.uint8)
 
-		self.grab_cut_mask = np.zeros(self.photo_crop.shape[:2], dtype=np.uint8)
-		
-		cv2.grabCut(
-			self.photo_crop,
-			self.grab_cut_mask,
-			tuple(np.concatenate([self.roi_tl, self.roi_br-self.roi_tl], axis=0)),
-			self.grab_cut_state[0:1],
-			self.grab_cut_state[1:2],
-			self.GRAB_CUT_NUM_ITER, cv2.GC_INIT_WITH_RECT,
-		)
+
+
+		# sometimes grab cut throws an exception because it finds no foreground in the whole roi
+		# we help it then by marking the central pixel as foreground
+		def set_center_pixel_to_foreground():
+			sh_c = np.array(self.grab_cut_mask.shape) // 2
+			sh_l = sh_c - 2
+			sh_r = sh_c + 2
+			self.grab_cut_mask[sh_l[0]:sh_r[0], sh_l[1]:sh_r[1]] = cv2.GC_FGD
+			#self.grab_cut_mask[sh[0]//2, sh[1]//2] = cv2.GC_FGD
+			# self.grab_cut_mask[0, 0] = cv2.GC_BGD
+			#print('gc mask bincount', np.bincount(self.grab_cut_mask.reshape(-1)))
+
+		def gc_init(mode = cv2.GC_INIT_WITH_RECT):
+			cv2.grabCut(
+				self.photo_crop,
+				self.grab_cut_mask,
+				tuple(np.concatenate([self.roi_tl, self.roi_br-self.roi_tl], axis=0)),
+				self.grab_cut_state[0:1],
+				self.grab_cut_state[1:2],
+				self.GRAB_CUT_NUM_ITER, mode,
+			)
+
+		try:
+			gc_init()
+		except cv2.error:
+			print('GrabCut failed on initialization - retrying with center pixel marked')
+			set_center_pixel_to_foreground()
+			gc_init(mode=cv2.GC_INIT_WITH_RECT | cv2.GC_INIT_WITH_MASK)
 
 		# exclude previously existing instances
 		if existing_instance_mask_global is not None:
@@ -82,8 +102,14 @@ class GrabCutInstance(QObject):
 
 			if np.any(existing_instance_mask_crop):
 				self.grab_cut_mask[np.where(existing_instance_mask_crop)] = cv2.GC_BGD
-				print('new instance with mask', np.count_nonzero(existing_instance_mask_crop))
-				self.grab_cut_update()
+				print('Applying mask of existing objects to the new instance, label counts:', np.count_nonzero(existing_instance_mask_crop), np.bincount(self.grab_cut_mask.reshape(-1)))
+				
+				try:
+					self.grab_cut_update()
+				except cv2.error:
+					print('GrabCut failed after applying existing object mask - retrying with center pixel marked')
+					set_center_pixel_to_foreground()
+					self.grab_cut_update()
 
 		self.update_mask()
 
@@ -542,6 +568,7 @@ class LabelBackend(QObject):
 
 		for inst in self.instances:
 			inst.load_from_dir(in_dir)
+			self.instanceAdded.emit(inst)
 
 	# Expose to Qt
 	overlayUpdated = Signal()

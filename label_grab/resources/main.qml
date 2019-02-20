@@ -465,7 +465,7 @@ ApplicationWindow {
 							target: viewportMouse
 
 							onReleased: function(event) {
-								console.log('New instance', this.rect_origin, ' to ', event.x, event.y, Qt.rect);
+								console.log('New instance:', this.rect_origin, ' to ', event.x, event.y;
 
 								const re = viewportMouse.mapToItem(imagePhoto,
 									Math.min(viewportMouse.mouseX, viewportMouse.rect_origin.x),

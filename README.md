@@ -8,6 +8,15 @@ The algorithm attempts to find the foreground object in a user-selected bounding
 It presents a suggested per-pixel mask, the user can then correct its mistakes and next suggestion
 will take those into account.
 
+This tool is part of the following article:  
+
+[**Detecting the Unexpected via Image Resynthesis**](https://arxiv.org/abs/1904.07595)  
+*Krzysztof Lis, Krishna Nakka, Pascal Fua, Mathieu Salzmann*  
+[ArXiv](https://arxiv.org/abs/1904.07595), 2019
+
+
+## Demo
+
 [**Watch the demo video**](https://www.youtube.com/watch?v=w8JAfPiU81c)
 
 <a href="https://www.youtube.com/watch?v=w8JAfPiU81c">

@@ -4,3 +4,9 @@ __pycache__
 
 .idea
 .vscode
+
+# pyinstaller
+dist
+build
+label-grab.spec
+label-grab-ex.spec

@@ -39,7 +39,7 @@ def main(config):
 	qml_engine.addImageProvider('backend', backend.image_provider)
 
 	# Load main window
-	qml_engine.load(QUrl.fromLocalFile(str(DIR_RESOURCES / 'main.qml')))
+	qml_engine.load(QUrl.fromLocalFile(str(DIR_RESOURCES / 'qml' / 'main.qml')))
 
 	if qml_engine.rootObjects():
 		exit_code = qt_app.exec_()

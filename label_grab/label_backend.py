@@ -353,12 +353,29 @@ class LabelBackend(QObject):
 		else:
 			print(f'Config path {cfg_path} is not a file')
 
+	@staticmethod
+	def load_photo(img_path):
+		""" Load image and ensure it is 8bit RGB """
+		img_data = imageio.imread(img_path)
+
+		# 8 bit
+		img_data = img_data.astype(np.uint8)
+
+		# ensure that is has 3 channels
+		if img_data.shape.__len__() == 2: # 2D grayscale
+			img_data = np.broadcast_to(img_data[:, :, None], img_data.shape + (3,))
+
+		if img_data.shape[2] == 4: #RGBA
+			img_data = img_data[:, :, :3]
+
+		return img_data
+
 	def set_image_path(self, img_path):
 		print('Loading image', img_path)
 
 		# Load new image
 		self.img_path = Path(img_path)
-		self.photo = imageio.imread(self.img_path)
+		self.photo = self.load_photo(self.img_path)
 		self.resolution = np.array(self.photo.shape[:2][::-1])
 		self.image_provider.init_image(self.resolution)
 		self.overlay_data = self.image_provider.image_view

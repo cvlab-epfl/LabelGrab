@@ -2,7 +2,7 @@ from pathlib import Path
 import os, sys
 import click
 from qtpy.QtCore import QUrl
-from qtpy.QtGui import QGuiApplication
+from qtpy.QtGui import QGuiApplication, QIcon
 from qtpy.QtQml import QQmlApplicationEngine
 
 from .label_backend import LabelBackend
@@ -22,6 +22,8 @@ def main(config):
 	qt_app = QGuiApplication(sys.argv)
 	qt_app.setOrganizationName("EPFL")
 	qt_app.setOrganizationDomain("ch")
+
+	qt_app.setWindowIcon(QIcon(str(DIR_RESOURCES / 'label-grab-icon.svg')))
 
 	# Init QML
 	qml_engine = QQmlApplicationEngine()

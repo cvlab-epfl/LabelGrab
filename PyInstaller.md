@@ -24,4 +24,8 @@ Directory:
 pyinstaller main.py --name label-grab --add-data label_grab/resources/:label_grab/resources
 ```
 
-
+Windows for some reason wants `;` instead of `:`
+```
+pyinstaller main.py --name label-grab-win --onefile --add-data "label_grab/resources/;label_grab/resources"
+pyinstaller main.py --name label-grab-win --add-data "label_grab/resources/;label_grab/resources"
+```

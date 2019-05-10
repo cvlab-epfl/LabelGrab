@@ -18,6 +18,14 @@ ApplicationWindow {
 	Universal.theme: Universal.Dark
 	Universal.accent: Universal.Violet
 
+	function modify_depth_index(relative) {
+		if(backend.selected !== null) {
+			backend.selected.modify_depth_index(relative)
+		} else {
+			console.log('Raise/lower: no instance selected');
+		}
+	}
+
 	menuBar: MenuBar {
 		Menu {
 			title: qsTr("&File")
@@ -51,7 +59,51 @@ ApplicationWindow {
 				}
 			}
 		}
+
+		Menu {
+			title: qsTr("&Instance")
+
+			Action {
+				text: qsTr("Delete") + ' [' + this.shortcut + ']'
+				shortcut: "Del"
+				onTriggered: {
+					if(backend.selected !== null) {
+						deleteDialog.instance_info = backend.selected.info;
+						deleteDialog.open();
+					} else {
+						console.log('Delete: no instance selected');
+					}
+				}
+			}
+
+			MenuSeparator { }
+
+			Action {
+				text: qsTr("Raise instance") + ' [' + this.shortcut + ']'
+				shortcut: "PgUp"
+				onTriggered: modify_depth_index(-1)
+			}
+			Action {
+				text: qsTr("Lower instance") + ' [' + this.shortcut + ']'
+				shortcut: "PgDown"
+				onTriggered: modify_depth_index(+1)
+			}
+		}
 	}
+
+	/*
+			Shortcut {
+			sequence: "Del"
+			onActivated: {
+				if(backend.selected !== null) {
+					deleteDialog.instance_info = backend.selected.info;
+					deleteDialog.open();
+				} else {
+					console.log('Delete: no instance selected');
+				}
+			}
+		}
+	*/
 
 	FileDialog {
 		id: openFileDialog
@@ -67,6 +119,18 @@ ApplicationWindow {
 		onRejected: {
 			console.log("Canceled")
 		}
+	}
+
+	Dialog {
+		id: deleteDialog
+		property var instance_info: {name: 'not initialized'}
+
+		title: "Delete instance " + instance_info.name + "?"
+
+		standardButtons: Dialog.Ok | Dialog.Cancel
+
+		onAccepted: backend.delete_instance(instance_info.id);
+		onRejected: console.log("Cancel delete")
 	}
 
 	header: ToolBar {
@@ -117,12 +181,6 @@ ApplicationWindow {
 					}
 				}
 			}
-
-//			Item {
-//				Layout.row: 100
-//				Layout.column: 100
-//				Layout.fillWidth: true
-//			}
 		}
 
 		Component.onCompleted: {
@@ -150,65 +208,7 @@ ApplicationWindow {
 			id: viewport
 		}
 
-		Rectangle {
-			id: sidebar
-
-			Layout.preferredWidth: 150
-			Layout.fillHeight: true
-
-			color: Universal.foreground
-			border.width: 0
-
-			ColumnLayout {
-				id: sidebarInstances
-				width: parent.width
-				//anchors.fill
-
-				Label {
-					text: "Instances"
-				}
-
-				Component {
-					id: sidebarInstanceTemplate
-
-					Button {
-						property var instance
-						text: instance.info.id + " " + instance.info.cls.name
-						Layout.fillWidth: true
-
-						background: Rectangle {
-							color: "transparent"
-							border.color: instance.info.cls.color
-							border.width: 2
-						}
-
-						onClicked: {
-							backend.select_instance(instance.info.id);
-						}
-
-						Component.onCompleted: {
-							instance.deleted.connect(function() {
-								destroy();
-							});
-						}
-					}
-				}
-			}
-
-			Component.onCompleted: {
-				function on_new_instance(inst) {
-					sidebarInstanceTemplate.createObject(sidebarInstances, {
-						instance: inst,
-					});
-				}
-
-				const insts = backend.get_instances();
-				for(var idx = 0; idx < insts.length; idx++) {
-					on_new_instance(insts[idx]);
-				}
-
-				backend.instanceAdded.connect(on_new_instance);
-			}
+		InstanceList {
 		}
 	}
 }

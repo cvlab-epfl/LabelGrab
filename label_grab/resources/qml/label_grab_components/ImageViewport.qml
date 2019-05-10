@@ -241,30 +241,6 @@ Rectangle {
 			onActivated: viewportMouse.key_confirm();
 		}
 
-		Shortcut {
-			sequence: "Del"
-			onActivated: {
-				if(backend.selected !== null) {
-					deleteDialog.instance_info = backend.selected.info;
-					deleteDialog.open();
-				} else {
-					console.log('Delete: no instance selected');
-				}
-			}
-		}
-
-		Dialog {
-			id: deleteDialog
-			property var instance_info: {name: 'not initialized'}
-
-			title: "Delete instance " + instance_info.name + "?"
-
-			standardButtons: Dialog.Ok | Dialog.Cancel
-
-			onAccepted: backend.delete_instance(instance_info.id);
-			onRejected: console.log("Cancel delete")
-		}
-
 		states: [
 			State{
 				name: "move"

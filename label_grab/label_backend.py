@@ -55,6 +55,8 @@ class GrabCutInstance(QObject):
 
 		self.photo_crop = self.photo[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 
+		self.depth_index = self.id
+
 		self.update_qt_info()
 
 	def grab_cut_init(self, existing_instance_mask_global=None):
@@ -217,9 +219,13 @@ class GrabCutInstance(QObject):
 		)
 		return inst
 
+	@Slot(int)
+	def modify_depth_index(self, change):
+		self.depth_index += change
+		print(f'Depth index +{change} is now {self.depth_index}')
+		self.update_qt_info()
 
 	# Expose to Qt
-
 	infoChanged = Signal()
 	info = Property("QVariant", notify=infoChanged)
 	@info.getter
@@ -229,12 +235,13 @@ class GrabCutInstance(QObject):
 	def update_qt_info(self):
 		self.qt_info = dict(
 			id = self.id,
-			name = f'{self.id} {self.semantic_class.name}',
+			name = f'{self.id} {self.semantic_class.name} {self.depth_index}',
 			cls = self.semantic_class.to_dict(),
 			x = float(self.crop_tl[0] + self.roi_tl[0]),
 			y = float(self.crop_tl[1] + self.roi_tl[1]),
 			width = float(self.roi_br[0] - self.roi_tl[0]),
 			height = float(self.roi_br[1] - self.roi_tl[1]),
+			depth_index = self.depth_index,
 		)
 		self.infoChanged.emit()
 

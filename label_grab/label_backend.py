@@ -1,5 +1,5 @@
 
-from qtpy.QtCore import Qt, QObject, Signal, Slot, Property, QPointF, QRectF
+from qtpy.QtCore import Qt, QObject, QUrl, Signal, Slot, Property, QPointF, QRectF
 from qtpy.QtQuick import QQuickImageProvider
 from qtpy.QtQml import QJSValue
 from qtpy.QtGui import QImage, QColor
@@ -353,7 +353,6 @@ class LabelBackend(QObject):
 		else:
 			print(f'Config path {cfg_path} is not a file')
 
-
 	def set_image_path(self, img_path):
 		print('Loading image', img_path)
 
@@ -382,14 +381,9 @@ class LabelBackend(QObject):
 		self.overlay_refresh_after_selection_change()
 
 
-	@Slot(str)
-	def set_image(self, path):
-		path_prefix = "file://"
-		if path.startswith(path_prefix):
-			path = path[path_prefix.__len__():]
-
-		self.set_image_path(path)
-
+	@Slot(QUrl)
+	def set_image(self, img_url):
+		self.set_image_path(img_url.toLocalFile())
 
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint, center):

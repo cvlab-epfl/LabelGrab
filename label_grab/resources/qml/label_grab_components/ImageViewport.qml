@@ -6,6 +6,7 @@ import QtQuick.Shapes 1.11
 Rectangle {
 	property bool overlayVisible: true
 	property int last_used_class_id: 1
+	property url imageSource: "../../images/test.jpg"
 
 	id: viewport
 
@@ -13,6 +14,12 @@ Rectangle {
 	Layout.fillHeight: true
 
 	color: '#2a2a2a'
+
+	function resetTransform() {
+		imageScale.value = Math.min(parent.width / (imagePhoto.implicitWidth + 32), parent.height / (imagePhoto.implicitHeight + 32));
+		imageTranslation.x = 0;
+		imageTranslation.y = 0;
+	}
 
 	Item {
 		id: imageContainer
@@ -34,15 +41,9 @@ Rectangle {
 			id: imageTranslation
 		}
 
-		function resetTransform() {
-			imageScale.value = Math.min(parent.width / (imagePhoto.implicitWidth + 32), parent.height / (imagePhoto.implicitHeight + 32));
-			imageTranslation.x = 0;
-			imageTranslation.y = 0;
-		}
-
 		Image {
 			id: imagePhoto
-			source: "../../images/test.jpg"
+			source: viewport.imageSource
 
 			anchors.horizontalCenter: imageContainer.horizontalCenter
 			anchors.verticalCenter: imageContainer.verticalCenter
@@ -72,7 +73,7 @@ Rectangle {
 					suffix = 1 - suffix;
 				})
 
-				imageContainer.resetTransform();
+				viewport.resetTransform();
 			}
 
 			Shape {

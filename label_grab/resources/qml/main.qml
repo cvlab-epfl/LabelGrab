@@ -59,11 +59,10 @@ ApplicationWindow {
 		folder: "../../../example_data"
 
 		onAccepted: {
-			console.log("You chose: " + openFileDialog.fileUrls);
-			backend.set_image(openFileDialog.fileUrl);
-			imagePhoto.source = openFileDialog.fileUrl;
-
-			imageContainer.resetTransform();
+			console.log("You chose: " + this.fileUrls);			
+			backend.set_image(this.fileUrl);
+			viewport.imageSource = this.fileUrl;
+			viewport.resetTransform();
 		}
 		onRejected: {
 			console.log("Canceled")

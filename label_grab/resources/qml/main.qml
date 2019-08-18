@@ -1,10 +1,10 @@
-import QtQuick 2.12
+import QtQuick 2.13
 import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
 import QtQuick.Dialogs 1.1
 import QtQuick.Shapes 1.11
 import QtQuick.Window 2.2
-import QtQuick.Controls.Universal 2.12
+// import QtQuick.Controls.Universal 2.12
 
 import "label_grab_components"
 
@@ -15,8 +15,18 @@ ApplicationWindow {
 	width: Screen.width
 	height: Screen.height
 
-	Universal.theme: Universal.Dark
-	Universal.accent: Universal.Violet
+	// https://doc.qt.io/qt-5/qtquickcontrols2-fusion.html
+	palette.window: "black"
+	palette.windowText: "white"
+	palette.text: "white"
+	palette.base: "dimgray"
+	palette.highlight: "darkorange"
+	palette.highlightedText: "black"
+	palette.button: "dimgray"
+	palette.buttonText: "white"
+
+	// Universal.theme: Universal.Dark
+	// Universal.accent: Universal.Violet
 
 	function modify_depth_index(relative) {
 		if(backend.selected !== null) {
@@ -126,8 +136,11 @@ ApplicationWindow {
 		property var instance_info: {name: 'not initialized'}
 
 		title: "Delete instance " + instance_info.name + "?"
-
+		modal: true
 		standardButtons: Dialog.Ok | Dialog.Cancel
+		x: (parent.width - width) * 0.5 
+		y: (parent.height - height) * 0.5
+		//anchors.horizontalCenter: parent.horizontalCenter
 
 		onAccepted: backend.delete_instance(instance_info.id);
 		onRejected: console.log("Cancel delete")

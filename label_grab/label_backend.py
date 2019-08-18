@@ -37,9 +37,10 @@ class GrabCutInstance(QObject):
 	MORPH_KERNEL = np.ones((3, 3), np.uint8)
 
 
-	def __init__(self, instance_id, semantic_class, photo, crop_rect, roi_rect):
+	def __init__(self, backend, instance_id, semantic_class, photo, crop_rect, roi_rect):
 		super().__init__()
 
+		self.backend = backend
 		self.id = instance_id
 		self.semantic_class = semantic_class
 		self.photo = photo
@@ -63,8 +64,6 @@ class GrabCutInstance(QObject):
 
 		self.grab_cut_state = np.zeros((2,65), np.float64)
 		self.grab_cut_mask = np.full(self.photo_crop.shape[:2], cv2.GC_PR_BGD, dtype=np.uint8)
-
-
 
 		# sometimes grab cut throws an exception because it finds no foreground in the whole roi
 		# we help it then by marking the central pixel as foreground
@@ -211,9 +210,10 @@ class GrabCutInstance(QObject):
 		self.update_mask()
 
 	@staticmethod
-	def from_dict(saved_info, config, photo):
+	def from_dict(backend, saved_info, config, photo):
 
 		inst = GrabCutInstance(
+			backend,
 			saved_info['id'], config.classes_by_id[saved_info['cls']], photo,
 			np.array(saved_info['crop_rect']), np.array(saved_info['roi_rect']),
 		)
@@ -223,6 +223,7 @@ class GrabCutInstance(QObject):
 	def modify_depth_index(self, change):
 		self.depth_index += change
 		print(f'Depth index +{change} is now {self.depth_index}')
+		self.backend.update_depths()
 		self.update_qt_info()
 
 	# Expose to Qt
@@ -467,6 +468,10 @@ class LabelBackend(QObject):
 		else:
 			print('overlay_refresh_after_edit but instance_selected is null')
 
+	def update_depths(self):
+		# self.instances.sort(attrgetter('depth_index'))
+		pass
+
 	@Slot(int)
 	def select_instance(self, instance_id):
 		if instance_id <= 0:
@@ -496,7 +501,7 @@ class LabelBackend(QObject):
 			for inst in self.instances:
 				inst.draw_mask(existing_instance_mask, 1)
 
-			instance = GrabCutInstance(self.next_instance_id, sem_class, self.photo, crop_rect, roi_rect)
+			instance = GrabCutInstance(self, self.next_instance_id, sem_class, self.photo, crop_rect, roi_rect)
 			self.next_instance_id += 1
 
 			instance.grab_cut_init(existing_instance_mask)
@@ -580,7 +585,7 @@ class LabelBackend(QObject):
 			json_data = json.load(f_in)
 
 		self.instances = [
-			GrabCutInstance.from_dict(inst_data, self.config, self.photo)
+			GrabCutInstance.from_dict(self, inst_data, self.config, self.photo)
 			for inst_data in json_data['instances']
 		]
 

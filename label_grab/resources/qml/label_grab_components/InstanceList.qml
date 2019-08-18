@@ -8,8 +8,10 @@ Rectangle {
 	Layout.preferredWidth: 150
 	Layout.fillHeight: true
 
-	color: Universal.background
+	// color: Universal.background
 	border.width: 0
+
+	color: palette.window
 
 	GridLayout {
 		// Needs to be GridLayout because ColumnLayout does not respect child's Layout.row property for ordering
@@ -32,6 +34,7 @@ Rectangle {
 				property var instance
 				text: instance ? (instance.info.id + " " + instance.info.cls.name + " " + instance.info.depth_index) : "NULL"
 				//text: instance ? instance.info.name : "NULL"
+
 				Layout.fillWidth: true
 				Layout.row: instance.info.depth_index
 				Layout.column: 0
@@ -39,7 +42,7 @@ Rectangle {
 				background: Rectangle {
 					color: "transparent"
 					border.color: instance ? (instance.info.cls.color) : "red"
-					border.width: 2
+					border.width: (instance === backend.selected) ? 4 : 2
 				}
 
 				onClicked: {

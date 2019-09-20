@@ -58,7 +58,7 @@ class GrabCutInstance(QObject):
 
 		self.photo_crop = self.photo[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 
-		self.depth_index = self.id
+		self.depth_index = self.backend.depth_index_new()
 
 		self.update_qt_info()
 
@@ -224,12 +224,10 @@ class GrabCutInstance(QObject):
 		)
 		return inst
 
-	@Slot(int)
-	def modify_depth_index(self, change):
-		self.depth_index += change
-		log.debug(f'Depth index +{change} is now {self.depth_index}')
-		self.backend.update_depths()
-		self.update_qt_info()
+		# self.depth_index += change
+		# log.debug(f'Depth index +{change} is now {self.depth_index}')
+		# self.backend.reindex(self, new_index)
+		# self.update_qt_info()
 
 	# Expose to Qt
 	infoChanged = Signal()
@@ -412,11 +410,11 @@ class LabelBackend(QObject):
 
 
 	@Slot(QUrl)
-	def set_image(self, img_url):
+	def set_image(self, img_url : QUrl):
 		self.set_image_path(img_url.toLocalFile())
 
 	@Slot(int, QPointF)
-	def paint_circle(self, label_to_paint, center):
+	def paint_circle(self, label_to_paint : int, center : QPointF):
 		try: # this has to finish, we don't want to break UI interaction
 
 			if self.instance_selected:
@@ -429,10 +427,10 @@ class LabelBackend(QObject):
 				log.info('paint_circle: no instance is selected')
 
 		except Exception as e:
-			log.exception('Exception in paint_circle: {e}')
+			log.exception('Exception in paint_circle')
 
 	@Slot(int, QJSValue)
-	def paint_polygon(self, label_to_paint, points):
+	def paint_polygon(self, label_to_paint : int, points : QJSValue):
 		try:  # this has to finish, we don't want to break UI interaction
 
 			if self.instance_selected:
@@ -445,7 +443,7 @@ class LabelBackend(QObject):
 				log.info('paint_polygon: no instance is selected')
 
 		except Exception as e:
-			log.exception('Exception in paint_polygon: {e}')
+			log.exception('Exception in paint_polygon')
 
 	def overlay_refresh_after_selection_change(self):
 		if self.instance_selected:
@@ -469,12 +467,11 @@ class LabelBackend(QObject):
 		else:
 			log.info('overlay_refresh_after_edit but instance_selected is null')
 
-	def update_depths(self):
-		# self.instances.sort(attrgetter('depth_index'))
-		pass
+	def depth_index_new(self):
+		return max((inst.depth_index for inst in self.instances), default=0) + 1
 
 	@Slot(int)
-	def select_instance(self, instance_id):
+	def select_instance(self, instance_id : int):
 		if instance_id <= 0:
 			instance_id = None
 
@@ -486,7 +483,7 @@ class LabelBackend(QObject):
 		self.overlay_refresh_after_selection_change()
 
 	@Slot(QRectF, int)
-	def new_instance(self, roi_rect_qt, sem_class_id):
+	def new_instance(self, roi_rect_qt : QRectF, sem_class_id : int):
 		try: # this has to finish, we don't want to break UI interaction
 			roi_rect = np.rint(self.qml_rect_to_np(roi_rect_qt)).astype(np.int)
 			sem_class = self.config.classes_by_id.get(sem_class_id, self.config.classes[0])
@@ -514,10 +511,10 @@ class LabelBackend(QObject):
 			self.instanceAdded.emit(instance)
 
 		except Exception as e:
-			log.exception('Exception in new_instance: {e}')
+			log.exception('Exception in new_instance')
 
 	@Slot(int, int)
-	def set_instance_class(self, instance_id, class_id):
+	def set_instance_class(self, instance_id : int, class_id : int):
 		try:  # this has to finish, we don't want to break UI interaction
 			inst = self.instances_by_id[instance_id]
 			cls = self.config.classes_by_id[class_id]
@@ -527,10 +524,10 @@ class LabelBackend(QObject):
 			self.overlay_refresh_after_selection_change()
 
 		except Exception as e:
-			log.exception('Exception in set_instance_class: {e}')
+			log.exception('Exception in set_instance_class')
 
 	@Slot(int)
-	def delete_instance(self, instance_id):
+	def delete_instance(self, instance_id : int):
 		try:  # this has to finish, we don't want to break UI interaction
 			inst = self.instances_by_id[instance_id]
 
@@ -544,20 +541,53 @@ class LabelBackend(QObject):
 			self.overlay_refresh_after_selection_change()
 
 		except Exception as e:
-			log.exception('Exception in delete_instance: {e}')
+			log.exception('Exception in delete_instance')
+
+	@Slot(int, int)
+	def change_instance_depth(self, instance_id : int, change : int):
+		try:  # this has to finish, we don't want to break UI interaction
+			
+			instance = self.instances_by_id[instance_id]
+			# -1 because array is 0 indexed but depth is 1-indexed
+			requested_index = max(0, instance.depth_index - 1 + change)
+
+			instances_by_depthindex = self.instances.copy()
+			instances_by_depthindex.sort(key=attrgetter('depth_index'))
+
+			instances_by_depthindex.remove(instance)
+			instances_by_depthindex.insert(requested_index, instance)
+
+			#log.debug(f'Depth: moving inst {instance.id} to {requested_index}')
+
+			for i, inst in enumerate(instances_by_depthindex):
+				new_depth_index = i+1
+
+				if new_depth_index != inst.depth_index:
+					#log.debug(f'Inst {inst.id} depth change: {inst.depth_index} -> {new_depth_index}')
+					inst.depth_index = new_depth_index
+					inst.update_qt_info()
+
+		except Exception as e:
+			log.exception(f'Exception in change_instance_depth, args: {instance_id}, {change}')
 
 	@Slot()
 	def save(self):
+		log.info(f'save {self.img_path}')
 
 		# outputs
 		sem_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 		sem_colorimg = np.zeros(tuple(self.resolution[::-1]) + (3,), dtype=np.uint8)
 		inst_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 
-		for inst_id, inst in enumerate(self.instances):
+		instances_by_depthindex = self.instances.copy()
+		instances_by_depthindex.sort(key=attrgetter('depth_index'))
+
+		# draw the instance list, using depth_index as label
+		# biggest depth_index is on top
+		for inst_label_min1, inst in enumerate(instances_by_depthindex):
 			inst.draw_mask(sem_map)
 			inst.draw_mask(sem_colorimg, inst.semantic_class.color)
-			inst.draw_mask(inst_map, inst_id+1)
+			inst.draw_mask(inst_map, inst_label_min1+1)
 
 		out_dir = self.img_path.with_suffix('.labels')
 		out_dir.mkdir(exist_ok=True)

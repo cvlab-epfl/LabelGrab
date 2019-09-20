@@ -1,4 +1,4 @@
-import QtQuick 2.13
+import QtQuick 2.12
 import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
 import QtQuick.Dialogs 1.1
@@ -30,7 +30,7 @@ ApplicationWindow {
 
 	function modify_depth_index(relative) {
 		if(backend.selected !== null) {
-			backend.selected.modify_depth_index(relative)
+			backend.change_instance_depth(backend.selected.info.id, relative)
 		} else {
 			console.log('Raise/lower: no instance selected');
 		}
@@ -39,10 +39,12 @@ ApplicationWindow {
 	menuBar: MenuBar {
 		Menu {
 			title: qsTr("&File")
-			Action { text: qsTr("&Open..."); shortcut: StandardKey.Open; icon.name: "file-open"
+			Action { text: qsTr("Open..." ); icon.name: "file-open";
+				shortcut: StandardKey.Open
 				onTriggered: openFileDialog.open();
 			}
-			Action { text: qsTr("&Save"); shortcut: StandardKey.Save; icon.name: "file-save";
+			Action { text: qsTr("Save");  icon.name: "file-save";
+				shortcut: StandardKey.Save
 				onTriggered: backend.save();
 			}
 
@@ -74,8 +76,8 @@ ApplicationWindow {
 			title: qsTr("&Instance")
 
 			Action {
-				text: qsTr("Delete") + ' [' + this.shortcut + ']'
-				shortcut: "Del"
+				text: qsTr("Delete") + ' [' + this.shortcut.nativeText + ']'
+				shortcut: StandardKey.Delete
 				onTriggered: {
 					if(backend.selected !== null) {
 						deleteDialog.instance_info = backend.selected.info;
@@ -89,31 +91,17 @@ ApplicationWindow {
 			MenuSeparator { }
 
 			Action {
-				text: qsTr("Raise instance") + ' [' + this.shortcut + ']'
+				text: qsTr("Raise instance") + ' [' + this.shortcut.nativeText + ']'
 				shortcut: "PgUp"
 				onTriggered: modify_depth_index(-1)
 			}
 			Action {
-				text: qsTr("Lower instance") + ' [' + this.shortcut + ']'
+				text: qsTr("Lower instance") + ' [' + this.shortcut.nativeText + ']'
 				shortcut: "PgDown"
 				onTriggered: modify_depth_index(+1)
 			}
 		}
 	}
-
-	/*
-			Shortcut {
-			sequence: "Del"
-			onActivated: {
-				if(backend.selected !== null) {
-					deleteDialog.instance_info = backend.selected.info;
-					deleteDialog.open();
-				} else {
-					console.log('Delete: no instance selected');
-				}
-			}
-		}
-	*/
 
 	FileDialog {
 		id: openFileDialog

@@ -39,7 +39,7 @@ class GrabCutInstance(QObject):
 	MORPH_KERNEL = np.ones((3, 3), np.uint8)
 
 
-	def __init__(self, backend, instance_id, semantic_class, photo, crop_rect, roi_rect):
+	def __init__(self, backend, instance_id, semantic_class, photo, crop_rect, roi_rect, depth_index=None):
 		super().__init__()
 
 		self.backend = backend
@@ -58,7 +58,7 @@ class GrabCutInstance(QObject):
 
 		self.photo_crop = self.photo[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 
-		self.depth_index = self.backend.depth_index_new()
+		self.depth_index = depth_index or backend.depth_index_new()
 
 		self.update_qt_info()
 
@@ -201,8 +201,9 @@ class GrabCutInstance(QObject):
 
 	def to_dict(self):
 		return dict(
-			id=self.id, cls=self.semantic_class.id,
-			crop_rect=self.crop_rect.tolist(), roi_rect = self.roi_rect.tolist(),
+			id = self.id, cls = self.semantic_class.id,
+			crop_rect = self.crop_rect.tolist(), roi_rect = self.roi_rect.tolist(),
+			depth_index = self.depth_index,
 		)
 
 	def save_to_dir(self, dir_path):
@@ -221,6 +222,7 @@ class GrabCutInstance(QObject):
 			backend,
 			saved_info['id'], config.classes_by_id[saved_info['cls']], photo,
 			np.array(saved_info['crop_rect']), np.array(saved_info['roi_rect']),
+			depth_index = saved_info.get('depth_index'),
 		)
 		return inst
 
@@ -580,10 +582,10 @@ class LabelBackend(QObject):
 			inst_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 
 			# draw the instance list, using depth_index as label
-			for inst_label_min1, inst in reversed(enumerate(self.instances_by_depthindex())):
+			for inst in reversed(self.instances_by_depthindex()):
 				inst.draw_mask(sem_map)
 				inst.draw_mask(sem_colorimg, inst.semantic_class.color)
-				inst.draw_mask(inst_map, inst_label_min1+1)
+				inst.draw_mask(inst_map, inst.depth_index)
 
 			out_dir = self.img_path.with_suffix('.labels')
 			out_dir.mkdir(exist_ok=True)

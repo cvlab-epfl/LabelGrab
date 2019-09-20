@@ -4,7 +4,7 @@ import click
 from qtpy.QtCore import QUrl
 from qtpy.QtGui import QGuiApplication, QIcon
 from qtpy.QtQml import QQmlApplicationEngine
-from .label_backend import LabelBackend
+from .label_backend import LabelBackend, QtUtils
 import logging
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ def run(config):
 		backend.load_config(Path(config))
 		backend.set_image_path(DIR_RESOURCES / 'images' / 'test.jpg')
 		qml_engine.rootContext().setContextProperty('backend', backend)
+
+		qtutils = QtUtils()
+		qml_engine.rootContext().setContextProperty('utils', qtutils)
 
 		# QML loads image from the backend using an image provider
 		qml_engine.addImageProvider('backend', backend.image_provider)

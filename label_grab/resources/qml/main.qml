@@ -1,9 +1,11 @@
 import QtQuick 2.12
+import Qt.labs.platform 1.1 // StandardPaths
 import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
 import QtQuick.Dialogs 1.1
 import QtQuick.Shapes 1.11
 import QtQuick.Window 2.2
+
 // import QtQuick.Controls.Universal 2.12
 
 import "label_grab_components"
@@ -39,11 +41,15 @@ ApplicationWindow {
 	menuBar: MenuBar {
 		Menu {
 			title: qsTr("&File")
-			Action { text: qsTr("Open..." ); icon.name: "file-open";
+			Action { 
+				text: qsTr("Open..." ) + utils.shortcut_text(this.shortcut)
+				icon.name: "file-open"
 				shortcut: StandardKey.Open
 				onTriggered: openFileDialog.open();
 			}
-			Action { text: qsTr("Save");  icon.name: "file-save";
+			Action { 
+				text: qsTr("Save")  + utils.shortcut_text(this.shortcut) 
+				icon.name: "file-save";
 				shortcut: StandardKey.Save
 				onTriggered: backend.save();
 			}
@@ -64,7 +70,7 @@ ApplicationWindow {
 
 			Action {
 				id: actionToggleOverlay
-				text: qsTr("Toggle overlay") + ' [' + this.shortcut + ']'
+				text: qsTr("Toggle overlay") + utils.shortcut_text(this.shortcut)
 				shortcut: "Tab"
 				onTriggered: {
 					viewport.overlayVisible = !viewport.overlayVisible;
@@ -76,7 +82,7 @@ ApplicationWindow {
 			title: qsTr("&Instance")
 
 			Action {
-				text: qsTr("Delete") + ' [' + this.shortcut.nativeText + ']'
+				text: qsTr("Delete") + utils.shortcut_text(this.shortcut)
 				shortcut: StandardKey.Delete
 				onTriggered: {
 					if(backend.selected !== null) {
@@ -91,12 +97,12 @@ ApplicationWindow {
 			MenuSeparator { }
 
 			Action {
-				text: qsTr("Raise instance") + ' [' + this.shortcut.nativeText + ']'
+				text: qsTr("Raise instance") + utils.shortcut_text(this.shortcut)
 				shortcut: "PgUp"
 				onTriggered: modify_depth_index(-1)
 			}
 			Action {
-				text: qsTr("Lower instance") + ' [' + this.shortcut.nativeText + ']'
+				text: qsTr("Lower instance") + utils.shortcut_text(this.shortcut)
 				shortcut: "PgDown"
 				onTriggered: modify_depth_index(+1)
 			}
@@ -106,10 +112,14 @@ ApplicationWindow {
 	FileDialog {
 		id: openFileDialog
 		title: "Please choose a file"
-		folder: "../../../example_data"
+		selectExisting: true
+		selectFolder: false
+		selectMultiple: false
+		folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
 
 		onAccepted: {
-			console.log("You chose: " + this.fileUrls);			
+			console.log("You chose: " + this.fileUrls);
+			this.folder = utils.url_parent_directory(this.fileUrl);		
 			backend.set_image(this.fileUrl);
 			viewport.imageSource = this.fileUrl;
 			viewport.resetTransform();

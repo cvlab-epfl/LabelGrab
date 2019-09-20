@@ -2,7 +2,7 @@
 from qtpy.QtCore import Qt, QObject, QUrl, Signal, Slot, Property, QPointF, QRectF
 from qtpy.QtQuick import QQuickImageProvider
 from qtpy.QtQml import QJSValue
-from qtpy.QtGui import QImage, QColor
+from qtpy.QtGui import QImage, QColor, QKeySequence
 
 import numpy as np
 import cv2, imageio
@@ -408,10 +408,12 @@ class LabelBackend(QObject):
 		self.instance_selected = None
 		self.overlay_refresh_after_selection_change()
 
-
 	@Slot(QUrl)
 	def set_image(self, img_url : QUrl):
-		self.set_image_path(img_url.toLocalFile())
+		try: # this has to finish, we don't want to break UI interaction
+			self.set_image_path(img_url.toLocalFile())
+		except Exception as e:
+			log.exception('Exception in set_image')
 
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint : int, center : QPointF):
@@ -472,14 +474,7 @@ class LabelBackend(QObject):
 
 	@Slot(int)
 	def select_instance(self, instance_id : int):
-		if instance_id <= 0:
-			instance_id = None
-
-		if instance_id:
-			self.instance_selected = self.instances_by_id[instance_id]
-		else:
-			self.instance_selected = None
-
+		self.instance_selected = self.instances_by_id.get(instance_id, None)
 		self.overlay_refresh_after_selection_change()
 
 	@Slot(QRectF, int)
@@ -572,41 +567,44 @@ class LabelBackend(QObject):
 
 	@Slot()
 	def save(self):
-		log.info(f'save {self.img_path}')
+		try:  # this has to finish, we don't want to break UI interaction
+			log.info(f'save {self.img_path}')
 
-		# outputs
-		sem_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
-		sem_colorimg = np.zeros(tuple(self.resolution[::-1]) + (3,), dtype=np.uint8)
-		inst_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
+			# outputs
+			sem_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
+			sem_colorimg = np.zeros(tuple(self.resolution[::-1]) + (3,), dtype=np.uint8)
+			inst_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 
-		instances_by_depthindex = self.instances.copy()
-		instances_by_depthindex.sort(key=attrgetter('depth_index'))
+			instances_by_depthindex = self.instances.copy()
+			instances_by_depthindex.sort(key=attrgetter('depth_index'))
 
-		# draw the instance list, using depth_index as label
-		# biggest depth_index is on top
-		for inst_label_min1, inst in enumerate(instances_by_depthindex):
-			inst.draw_mask(sem_map)
-			inst.draw_mask(sem_colorimg, inst.semantic_class.color)
-			inst.draw_mask(inst_map, inst_label_min1+1)
+			# draw the instance list, using depth_index as label
+			# biggest depth_index is on top
+			for inst_label_min1, inst in enumerate(instances_by_depthindex):
+				inst.draw_mask(sem_map)
+				inst.draw_mask(sem_colorimg, inst.semantic_class.color)
+				inst.draw_mask(inst_map, inst_label_min1+1)
 
-		out_dir = self.img_path.with_suffix('.labels')
-		out_dir.mkdir(exist_ok=True)
+			out_dir = self.img_path.with_suffix('.labels')
+			out_dir.mkdir(exist_ok=True)
 
-		imageio.imwrite(out_dir / 'labels_semantic.png', sem_map)
-		imageio.imwrite(out_dir / 'labels_semantic_color.png', sem_colorimg)
-		imageio.imwrite(out_dir / 'labels_instance.png', inst_map)
+			imageio.imwrite(out_dir / 'labels_semantic.png', sem_map)
+			imageio.imwrite(out_dir / 'labels_semantic_color.png', sem_colorimg)
+			imageio.imwrite(out_dir / 'labels_instance.png', inst_map)
 
-		# internal state
+			# internal state
 
-		json_data = dict(
-			instances = [inst.to_dict() for inst in self.instances]
-		)
+			json_data = dict(
+				instances = [inst.to_dict() for inst in self.instances]
+			)
 
-		with (out_dir / 'index.json').open('w') as f_out:
-			json.dump(json_data, f_out, indent='	')
+			with (out_dir / 'index.json').open('w') as f_out:
+				json.dump(json_data, f_out, indent='	')
 
-		for inst in self.instances:
-			inst.save_to_dir(out_dir)
+			for inst in self.instances:
+				inst.save_to_dir(out_dir)
+		except Exception as e:
+			log.exception('Exception in save')
 
 	def load(self, in_dir):
 		with (in_dir / 'index.json').open('r') as f_in:
@@ -638,3 +636,27 @@ class LabelBackend(QObject):
 	selectedUpdate = Signal()
 	selected = Property(QObject, attrgetter('instance_selected'), notify=selectedUpdate)
 
+class QtUtils(QObject):
+
+	@Slot(QUrl, result=str)
+	def url_parent_directory(self, url : QUrl):
+		path = Path(url.toLocalFile())
+		parent_dir = path.parent
+		return str(parent_dir)
+
+	@Slot(str, result=str)
+	def shortcut_text(self, name_or_enum : str):
+		# shortcut is always cast to string
+		# but somtimes it is a key str "PgUp" and sometimes the QKeySequence.StandardKey enum value
+
+		# https://doc.qt.io/qtforpython/PySide2/QtGui/QKeySequence.html
+		# A QApplication instance must have been constructed before a QKeySequence is created; otherwise, your application may crash.
+
+		try:
+			enum_val = int(name_or_enum)
+			ks = QKeySequence(QKeySequence.StandardKey(enum_val))
+		except ValueError:
+			ks = QKeySequence(name_or_enum)
+
+		text = ks.toString(QKeySequence.NativeText)
+		return f' [{text}]' if text else ''

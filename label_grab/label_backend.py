@@ -456,7 +456,8 @@ class LabelBackend(QObject):
 		else:
 			self.overlay_data[:] = 0
 
-			for inst in self.instances:
+			# draw with depth in mind
+			for inst in reversed(self.instances_by_depthindex()):
 				inst.draw_overlay_contour(self.overlay_data)
 
 		self.overlayUpdated.emit()
@@ -471,6 +472,11 @@ class LabelBackend(QObject):
 
 	def depth_index_new(self):
 		return max((inst.depth_index for inst in self.instances), default=0) + 1
+
+	def instances_by_depthindex(self):
+		instances_by_depthindex = self.instances.copy()
+		instances_by_depthindex.sort(key=attrgetter('depth_index'))
+		return instances_by_depthindex
 
 	@Slot(int)
 	def select_instance(self, instance_id : int):
@@ -546,9 +552,7 @@ class LabelBackend(QObject):
 			# -1 because array is 0 indexed but depth is 1-indexed
 			requested_index = max(0, instance.depth_index - 1 + change)
 
-			instances_by_depthindex = self.instances.copy()
-			instances_by_depthindex.sort(key=attrgetter('depth_index'))
-
+			instances_by_depthindex = self.instances_by_depthindex()
 			instances_by_depthindex.remove(instance)
 			instances_by_depthindex.insert(requested_index, instance)
 
@@ -575,12 +579,8 @@ class LabelBackend(QObject):
 			sem_colorimg = np.zeros(tuple(self.resolution[::-1]) + (3,), dtype=np.uint8)
 			inst_map = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 
-			instances_by_depthindex = self.instances.copy()
-			instances_by_depthindex.sort(key=attrgetter('depth_index'))
-
 			# draw the instance list, using depth_index as label
-			# biggest depth_index is on top
-			for inst_label_min1, inst in enumerate(instances_by_depthindex):
+			for inst_label_min1, inst in reversed(enumerate(self.instances_by_depthindex())):
 				inst.draw_mask(sem_map)
 				inst.draw_mask(sem_colorimg, inst.semantic_class.color)
 				inst.draw_mask(inst_map, inst_label_min1+1)

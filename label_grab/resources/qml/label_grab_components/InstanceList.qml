@@ -32,8 +32,7 @@ Rectangle {
 
 			Button {
 				property var instance
-				text: instance ? (instance.info.id + " " + instance.info.cls.name + " " + instance.info.depth_index) : "NULL"
-				//text: instance ? instance.info.name : "NULL"
+				text: instance ? (instance.info.cls.name  + " " + instance.info.id) : "NULL"
 
 				Layout.fillWidth: true
 				Layout.row: instance.info.depth_index

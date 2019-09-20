@@ -4,8 +4,9 @@ import click
 from qtpy.QtCore import QUrl
 from qtpy.QtGui import QGuiApplication, QIcon
 from qtpy.QtQml import QQmlApplicationEngine
-
 from .label_backend import LabelBackend
+import logging
+log = logging.getLogger(__name__)
 
 #from . import resources
 
@@ -16,7 +17,7 @@ DIR_RESOURCES = DIR_SOURCE / 'resources'
 @click.option('--config', type=click.Path(exists=True, dir_okay=False), default=DIR_RESOURCES / 'config' / 'default_classes.json')
 # @click.option('--dir_in', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 # @click.option('--dir_out', type=click.Path(file_okay=False, dir_okay=True, path_type=Path), default=None)
-def main(config):
+def run(config):
 	# Set default style to "fusion"
 	# https://doc.qt.io/qt-5/qtquickcontrols2-styles.html#using-styles-in-qt-quick-controls-2
 	os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'fusion')
@@ -50,5 +51,5 @@ def main(config):
 		del qml_engine
 		sys.exit(exit_code)
 	else:
-		print('QML failed to load')
+		log.error('QML failed to load')
 		sys.exit(1)

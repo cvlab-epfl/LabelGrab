@@ -56,7 +56,7 @@ There are several ways to solve this:
 
 Run
 ```
-python main.py --config my_config.json
+python -m label_grab --config my_config.json
 ```
 
 The config file specifies the semantic classes, for example:

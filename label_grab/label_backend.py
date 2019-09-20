@@ -13,6 +13,8 @@ from operator import attrgetter
 from pathlib import Path
 import json, zipfile
 
+import logging
+log = logging.getLogger(__name__)
 
 def bgr(r, g, b, a):
 	return (b, g, r, a)
@@ -89,7 +91,7 @@ class GrabCutInstance(QObject):
 		try:
 			gc_init()
 		except cv2.error:
-			print('GrabCut failed on initialization - retrying with center pixel marked')
+			log.warning('GrabCut failed on initialization - retrying with center pixel marked')
 			set_center_pixel_to_foreground()
 			gc_init(mode=cv2.GC_INIT_WITH_RECT | cv2.GC_INIT_WITH_MASK)
 
@@ -103,12 +105,15 @@ class GrabCutInstance(QObject):
 
 			if np.any(existing_instance_mask_crop):
 				self.grab_cut_mask[np.where(existing_instance_mask_crop)] = cv2.GC_BGD
-				print('Applying mask of existing objects to the new instance, label counts:', np.count_nonzero(existing_instance_mask_crop), np.bincount(self.grab_cut_mask.reshape(-1)))
+				log.debug('Applying mask of existing objects to the new instance, label counts: {nonzero} {bc}'.format(
+					nonzero = np.count_nonzero(existing_instance_mask_crop),
+					bc = np.bincount(self.grab_cut_mask.reshape(-1)),
+				))
 				
 				try:
 					self.grab_cut_update()
 				except cv2.error:
-					print('GrabCut failed after applying existing object mask - retrying with center pixel marked')
+					log.warning('GrabCut failed after applying existing object mask - retrying with center pixel marked')
 					set_center_pixel_to_foreground()
 					self.grab_cut_update()
 
@@ -222,7 +227,7 @@ class GrabCutInstance(QObject):
 	@Slot(int)
 	def modify_depth_index(self, change):
 		self.depth_index += change
-		print(f'Depth index +{change} is now {self.depth_index}')
+		log.debug(f'Depth index +{change} is now {self.depth_index}')
 		self.backend.update_depths()
 		self.update_qt_info()
 
@@ -267,7 +272,7 @@ class LabelOverlayImageProvider(QQuickImageProvider):
 		self.image_view[:] = 0
 
 	def requestImage(self, id, size, requestedSize):
-		#print(f'requested img name={id} size={size} reqSize={requestedSize}')
+		#log.debug(f'requested img name={id} size={size} reqSize={requestedSize}')
 		return self.image_qt
 
 
@@ -359,7 +364,7 @@ class LabelBackend(QObject):
 		if cfg_path.is_file():
 			self.config.load_from_path(cfg_path)
 		else:
-			print(f'Config path {cfg_path} is not a file')
+			log.error(f'Config path {cfg_path} is not a file')
 
 	@staticmethod
 	def load_photo(img_path):
@@ -379,7 +384,7 @@ class LabelBackend(QObject):
 		return img_data
 
 	def set_image_path(self, img_path):
-		print('Loading image', img_path)
+		log.info(f'Loading image {img_path}')
 
 		# Load new image
 		self.img_path = Path(img_path)
@@ -397,7 +402,7 @@ class LabelBackend(QObject):
 		# Load state
 		data_dir = self.img_path.with_suffix('.labels')
 		if data_dir.is_dir():
-			print(f'Loading saved state from {data_dir}')
+			log.info(f'Loading saved state from {data_dir}')
 			self.load(data_dir)
 
 		self.next_instance_id = int(np.max([0] + [inst.id for inst in self.instances]) + 1)
@@ -413,7 +418,6 @@ class LabelBackend(QObject):
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint, center):
 		try: # this has to finish, we don't want to break UI interaction
-			#print('paint_circle!', label_to_paint, center)
 
 			if self.instance_selected:
 				center_pt = np.rint(center.toTuple()).astype(dtype=np.int)
@@ -422,11 +426,10 @@ class LabelBackend(QObject):
 				self.instance_selected.grab_cut_update()
 				self.overlay_refresh_after_edit()
 			else:
-				print('paint_circle: no instance is selected')
+				log.info('paint_circle: no instance is selected')
 
 		except Exception as e:
-			print('Error in paint_circle:', e)
-			traceback.print_exc()
+			log.exception('Exception in paint_circle: {e}')
 
 	@Slot(int, QJSValue)
 	def paint_polygon(self, label_to_paint, points):
@@ -434,17 +437,15 @@ class LabelBackend(QObject):
 
 			if self.instance_selected:
 				points = np.array([p.toTuple() for p in points.toVariant()])
-				#print('paint_polygon!', label_to_paint, points)
 
 				self.instance_selected.paint_polygon(label_to_paint, points)
 				self.instance_selected.grab_cut_update()
 				self.overlay_refresh_after_edit()
 			else:
-				print('paint_polygon: no instance is selected')
+				log.info('paint_polygon: no instance is selected')
 
 		except Exception as e:
-			print('Error in paint_polygon:', e)
-			traceback.print_exc()
+			log.exception('Exception in paint_polygon: {e}')
 
 	def overlay_refresh_after_selection_change(self):
 		if self.instance_selected:
@@ -466,7 +467,7 @@ class LabelBackend(QObject):
 			self.instance_selected.draw_overlay_edit_interface(self.overlay_data)
 			self.overlayUpdated.emit()
 		else:
-			print('overlay_refresh_after_edit but instance_selected is null')
+			log.info('overlay_refresh_after_edit but instance_selected is null')
 
 	def update_depths(self):
 		# self.instances.sort(attrgetter('depth_index'))
@@ -513,8 +514,7 @@ class LabelBackend(QObject):
 			self.instanceAdded.emit(instance)
 
 		except Exception as e:
-			print('Error in new_instance:', e)
-			traceback.print_exc()
+			log.exception('Exception in new_instance: {e}')
 
 	@Slot(int, int)
 	def set_instance_class(self, instance_id, class_id):
@@ -527,8 +527,7 @@ class LabelBackend(QObject):
 			self.overlay_refresh_after_selection_change()
 
 		except Exception as e:
-			print('Error in set_instance_class:', e)
-			traceback.print_exc()
+			log.exception('Exception in set_instance_class: {e}')
 
 	@Slot(int)
 	def delete_instance(self, instance_id):
@@ -545,8 +544,7 @@ class LabelBackend(QObject):
 			self.overlay_refresh_after_selection_change()
 
 		except Exception as e:
-			print('Error in delete_instance:', e)
-			traceback.print_exc()
+			log.exception('Exception in delete_instance: {e}')
 
 	@Slot()
 	def save(self):

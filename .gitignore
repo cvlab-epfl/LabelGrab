@@ -8,5 +8,5 @@ __pycache__
 # pyinstaller
 dist
 build
+label-grab-exe.spec
 label-grab.spec
-label-grab-ex.spec

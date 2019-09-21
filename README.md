@@ -27,9 +27,9 @@ ICCV 2019
 We provide packages make using [pyinstaller](https://www.pyinstaller.org/). 
 Running the executables below requires no installation.
 
-* [label-grab.AppImage](releases/download/v1.0.1/label-grab.AppImage) - Linux - AppImage:  to make it run, give the file the *executable* permission
-* [label-grab-win.exe](releases/download/v1.0.1/label-grab-win.exe) -  Windows - Single Executable: single .exe but takes some time to decompress on each start
-* [label-grab-win.7z](releases/download/v1.0.1/label-grab-win.7z) - Windows - Directory: directory with the exe and all dependencies
+* [label-grab.AppImage](https://github.com/cvlab-epfl/LabelGrab/releases/download/v1.0.1/label-grab.AppImage) - Linux - AppImage:  to make it run, give the file the *executable* permission
+* [label-grab-win.exe](https://github.com/cvlab-epfl/LabelGrab/releases/download/v1.0.1/label-grab-win.exe) -  Windows - Single Executable: single .exe but takes some time to decompress on each start
+* [label-grab-win.7z](https://github.com/cvlab-epfl/LabelGrab/releases/download/v1.0.1/label-grab-win.7z) - Windows - Directory: directory with the exe and all dependencies
 
 
 ## Installation - from source

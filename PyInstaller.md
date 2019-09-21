@@ -4,11 +4,9 @@
 
 ## Install PyInstaller
 
-We need to install PyInstaller from an unmerged oull request which fixes an error with PySide2:
-
-<https://github.com/sjackso/pyinstaller/tree/fix_3689>
-
-Maybe it will be merged into release some day.
+```bash
+pip install pyinstaller
+```
 
 ## Build
 
@@ -26,13 +24,16 @@ pyinstaller main.py --name label-grab --add-data label_grab/resources/:label_gra
 
 Windows for some reason wants `;` instead of `:`
 ```bash
+# prepare Windows icon
+magick label_grab/resources/label-grab-icon.svg -define icon:auto-resize=64,48,32,16 -background none build/label-grab-icon.ico
 # single executable
-pyinstaller main.py --name label-grab-win --onefile --add-data "label_grab/resources/;label_grab/resources"
+pyinstaller main.py --name label-grab-win --add-data "label_grab/resources/;label_grab/resources" --icon build/label-grab-icon.ico --onefile
 # directory
-pyinstaller main.py --name label-grab-win --add-data "label_grab/resources/;label_grab/resources"
+pyinstaller main.py --name label-grab-win --add-data "label_grab/resources/;label_grab/resources" --icon build/label-grab-icon.ico
 ```
 
 ## AppImage
+For Linux, turn the directory into a single executable using [AppImage](https://appimage.org/).
 
 * Install `appimagetool` from <https://github.com/AppImage/AppImageKit/releases>.
 

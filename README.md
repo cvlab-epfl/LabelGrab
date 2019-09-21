@@ -12,8 +12,7 @@ This tool is part of the following article:
 
 [**Detecting the Unexpected via Image Resynthesis**](https://arxiv.org/abs/1904.07595)  
 *Krzysztof Lis, Krishna Nakka, Pascal Fua, Mathieu Salzmann*  
-[ArXiv](https://arxiv.org/abs/1904.07595), 2019
-
+ICCV 2019
 
 ## Demo
 
@@ -23,23 +22,25 @@ This tool is part of the following article:
 <img src="doc/label_grab_example.jpg" />
 </a>
 
-## Installation
+## Packaged executables
+
+We provide packages make using [pyinstaller](https://www.pyinstaller.org/). 
+Running the executables below requires no installation.
+
+* [label-grab.AppImage](releases/download/v1.0.1/label-grab.AppImage) - Linux - AppImage:  to make it run, give the file the *executable* permission
+* [label-grab-win.exe](releases/download/v1.0.1/label-grab-win.exe) -  Windows - Single Executable: single .exe but takes some time to decompress on each start
+* [label-grab-win.7z](releases/download/v1.0.1/label-grab-win.7z) - Windows - Directory: directory with the exe and all dependencies
+
+
+## Installation - from source
 Install the following python modules:
 ```
 pip install numpy opencv-python imageio click qtpy pyside2 qimage2ndarray
 ```
-
-It also needs Qt 5.11 or higher libraries on the system.
-On Linux, these are in the repositories.
-
-On Windows, they can be downloaded [here](https://www.qt.io/download-qt-installer). 
-After installation, set the environemnt variables: 
-* `QT_PLUGIN_PATH` to `Qt\5.12.1\msvc2017_64\plugins`
-* `QML2_IMPORT_PATH` to `Qt\5.12.1\msvc2017_64\qml`
-
-where `Qt` is the installation directory.
-
-We plan to package all the necessary files with [pyinstaller](https://www.pyinstaller.org/).
+and run
+```
+python -m label_grab --config my_config.json
+```
 
 #### Conflict with `conda` installation
 
@@ -47,16 +48,20 @@ If you have a `conda` python installation, it may happen that you have conda `qt
 These packages have an old Qt version and cause this program to crash.
 There are several ways to solve this:
 
-* Remove the packages from conda if you don't need them: `conda remove qt pyqt --force`
-
 * Create a new conda environment and install the packages from pip using the command above.
-
+* Remove the packages from conda if you don't need them: `conda remove qt pyqt --force`
 
 ## Usage
 
-Run
+Run (for source installation)
 ```
+cd path_to_cloned_repo
 python -m label_grab --config my_config.json
+```
+or (for executable)
+```
+chmod +x label-grab.AppImage
+./label-grab.AppImage --config my_config.json
 ```
 
 The config file specifies the semantic classes, for example:

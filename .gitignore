@@ -10,3 +10,4 @@ dist
 build
 label-grab-exe.spec
 label-grab.spec
+label-grab-win.spec

@@ -1,19 +1,17 @@
 import QtQuick 2.12
-import Qt.labs.platform 1.1 // StandardPaths
 import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.11
 import QtQuick.Dialogs 1.1
 import QtQuick.Shapes 1.11
 import QtQuick.Window 2.2
 
-// import QtQuick.Controls.Universal 2.12
-
 import "label_grab_components"
 
 ApplicationWindow {
 	id: window
 	title: "Label Grab"
-	visible: true
+	
+	visibility: Window.Maximized
 	width: Screen.width
 	height: Screen.height
 
@@ -27,15 +25,16 @@ ApplicationWindow {
 	palette.button: "dimgray"
 	palette.buttonText: "white"
 
-	// Universal.theme: Universal.Dark
-	// Universal.accent: Universal.Violet
-
 	function modify_depth_index(relative) {
 		if(backend.selected !== null) {
 			backend.change_instance_depth(backend.selected.info.id, relative)
 		} else {
 			console.log('Raise/lower: no instance selected');
 		}
+	}
+
+	StandardPathsProvider {
+		id: pathsProvider
 	}
 
 	menuBar: MenuBar {
@@ -49,9 +48,16 @@ ApplicationWindow {
 			}
 			Action { 
 				text: qsTr("Save")  + utils.shortcut_text(this.shortcut) 
-				icon.name: "file-save";
+				icon.name: "file-save"
 				shortcut: StandardKey.Save
-				onTriggered: backend.save();
+				onTriggered: function() { 
+					const save_success = backend.save();
+					if(save_success) {
+						notification.show('Saved ' + backend.get_image_path())
+					} else {
+						notification.show_color('Failed to save ' + backend.get_image_path(), 'red')
+					}
+				}
 			}
 
 			MenuSeparator { }
@@ -80,11 +86,14 @@ ApplicationWindow {
 
 		Menu {
 			title: qsTr("&Instance")
-
+			
 			Action {
+				id: actionDelete
 				text: qsTr("Delete") + utils.shortcut_text(this.shortcut)
-				shortcut: StandardKey.Delete
-				onTriggered: {
+				shortcut: "Del"
+				onTriggered: this.action_delete()
+
+				function action_delete() {
 					if(backend.selected !== null) {
 						deleteDialog.instance_info = backend.selected.info;
 						deleteDialog.open();
@@ -93,6 +102,8 @@ ApplicationWindow {
 					}
 				}
 			}
+			// mac does not have delete key
+			Shortcut {sequence: "Backspace"; onActivated: actionDelete.action_delete()}
 
 			MenuSeparator { }
 
@@ -115,14 +126,20 @@ ApplicationWindow {
 		selectExisting: true
 		selectFolder: false
 		selectMultiple: false
-		folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+		folder: pathsProvider.standardPaths.writableLocation(pathsProvider.standardPaths.DocumentsLocation)
 
 		onAccepted: {
 			console.log("You chose: " + this.fileUrls);
 			this.folder = utils.url_parent_directory(this.fileUrl);		
-			backend.set_image(this.fileUrl);
-			viewport.imageSource = this.fileUrl;
-			viewport.resetTransform();
+			const load_success = backend.set_image(this.fileUrl);
+
+			if(load_success) {
+				viewport.imageSource = this.fileUrl;
+				viewport.resetTransform();
+				notification.show('Loaded ' + this.fileUrl)
+			} else {
+				notification.show_color('Failed to load ' + this.fileUrl, "red")
+			}
 		}
 		onRejected: {
 			console.log("Canceled")
@@ -138,6 +155,8 @@ ApplicationWindow {
 		standardButtons: Dialog.Ok | Dialog.Cancel
 		x: (parent.width - width) * 0.5 
 		y: (parent.height - height) * 0.5
+		// width: 640
+        // height: 320
 		//anchors.horizontalCenter: parent.horizontalCenter
 
 		onAccepted: backend.delete_instance(instance_info.id);
@@ -214,6 +233,7 @@ ApplicationWindow {
 	RowLayout {
 		anchors.fill: parent
 		spacing: 5
+		id: vpcont
 
 		ImageViewport {
 			id: viewport
@@ -221,5 +241,9 @@ ApplicationWindow {
 
 		InstanceList {
 		}
+	}
+
+	NotificationBox {
+		id: notification
 	}
 }

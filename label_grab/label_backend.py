@@ -199,6 +199,17 @@ class GrabCutInstance(QObject):
 		# #tm(reshape) 10.847654940000211
 		# #tm(equal) 18.054724517001887
 
+	def contains_point(self, pt) -> bool:
+		pt_int =  np.rint(pt).astype(np.int32)
+
+		if np.all(pt_int >= self.crop_tl) and np.all(pt_int < self.crop_br):
+			#log.debug(f'point {pt_int} is inside of bbox {self.crop_tl} {self.crop_br} - check mask')
+			pt_in_crop = pt_int - self.crop_tl
+			return self.mask[pt_in_crop[1], pt_in_crop[0]]
+		else:
+			#log.debug(f'point {pt_int} is outside of bbox {self.crop_tl} {self.crop_br}')
+			return False
+
 	def to_dict(self):
 		return dict(
 			id = self.id, cls = self.semantic_class.id,
@@ -383,12 +394,21 @@ class LabelBackend(QObject):
 
 		return img_data
 
+	@Slot(result=str)
+	def get_image_path(self):
+		return str(self.img_path)
+
 	def set_image_path(self, img_path):
 		log.info(f'Loading image {img_path}')
 
 		# Load new image
-		self.img_path = Path(img_path)
-		self.photo = self.load_photo(self.img_path)
+		
+		# this may throw if its not an image, in that case we don't apply any changes to variables
+		img_path = Path(img_path)
+		img_data = self.load_photo(img_path)
+
+		self.img_path = img_path
+		self.photo = img_data
 		self.resolution = np.array(self.photo.shape[:2][::-1])
 		self.image_provider.init_image(self.resolution)
 		self.overlay_data = self.image_provider.image_view
@@ -410,12 +430,14 @@ class LabelBackend(QObject):
 		self.instance_selected = None
 		self.overlay_refresh_after_selection_change()
 
-	@Slot(QUrl)
+	@Slot(QUrl, result=bool)
 	def set_image(self, img_url : QUrl):
 		try: # this has to finish, we don't want to break UI interaction
 			self.set_image_path(img_url.toLocalFile())
+			return True
 		except Exception as e:
 			log.exception('Exception in set_image')
+			return False
 
 	@Slot(int, QPointF)
 	def paint_circle(self, label_to_paint : int, center : QPointF):
@@ -448,6 +470,25 @@ class LabelBackend(QObject):
 
 		except Exception as e:
 			log.exception('Exception in paint_polygon')
+
+	@Slot(QPointF, result=int)
+	def instance_at_point(self, pt : QPointF):
+		"""
+		Instance id at point
+		-1 means no instance 
+		"""
+		try:
+			pt = np.rint(self.qml_point_to_np(pt)).astype(np.int32)
+
+			for inst in self.instances_by_depthindex():
+				if inst.contains_point(pt):
+					return inst.id
+
+			return -1
+
+		except Exception as e:
+			log.exception('Exception in instance_at_point')
+			return -1
 
 	def overlay_refresh_after_selection_change(self):
 		if self.instance_selected:
@@ -550,28 +591,32 @@ class LabelBackend(QObject):
 	def change_instance_depth(self, instance_id : int, change : int):
 		try:  # this has to finish, we don't want to break UI interaction
 			
-			instance = self.instances_by_id[instance_id]
-			# -1 because array is 0 indexed but depth is 1-indexed
-			requested_index = max(0, instance.depth_index - 1 + change)
+			instance = self.instances_by_id.get(instance_id)
 
-			instances_by_depthindex = self.instances_by_depthindex()
-			instances_by_depthindex.remove(instance)
-			instances_by_depthindex.insert(requested_index, instance)
+			if instance is not None:
+				# -1 because array is 0 indexed but depth is 1-indexed
+				requested_index = max(0, instance.depth_index - 1 + change)
 
-			#log.debug(f'Depth: moving inst {instance.id} to {requested_index}')
+				instances_by_depthindex = self.instances_by_depthindex()
+				instances_by_depthindex.remove(instance)
+				instances_by_depthindex.insert(requested_index, instance)
 
-			for i, inst in enumerate(instances_by_depthindex):
-				new_depth_index = i+1
+				#log.debug(f'Depth: moving inst {instance.id} to {requested_index}')
 
-				if new_depth_index != inst.depth_index:
-					#log.debug(f'Inst {inst.id} depth change: {inst.depth_index} -> {new_depth_index}')
-					inst.depth_index = new_depth_index
-					inst.update_qt_info()
+				for i, inst in enumerate(instances_by_depthindex):
+					new_depth_index = i+1
+
+					if new_depth_index != inst.depth_index:
+						#log.debug(f'Inst {inst.id} depth change: {inst.depth_index} -> {new_depth_index}')
+						inst.depth_index = new_depth_index
+						inst.update_qt_info()
+			else:
+				log.warning('change_instance_depth with nonexistent instance id {instance_id}')
 
 		except Exception as e:
 			log.exception(f'Exception in change_instance_depth, args: {instance_id}, {change}')
 
-	@Slot()
+	@Slot(result=bool)
 	def save(self):
 		try:  # this has to finish, we don't want to break UI interaction
 			log.info(f'save {self.img_path}')
@@ -605,8 +650,12 @@ class LabelBackend(QObject):
 
 			for inst in self.instances:
 				inst.save_to_dir(out_dir)
+			
+			return True
 		except Exception as e:
 			log.exception('Exception in save')
+			return False
+
 
 	def load(self, in_dir):
 		with (in_dir / 'index.json').open('r') as f_in:
@@ -638,13 +687,14 @@ class LabelBackend(QObject):
 	selectedUpdate = Signal()
 	selected = Property(QObject, attrgetter('instance_selected'), notify=selectedUpdate)
 
-class QtUtils(QObject):
 
-	@Slot(QUrl, result=str)
+class QtUtils(QObject):
+	@Slot(QUrl, result=QUrl)
 	def url_parent_directory(self, url : QUrl):
 		path = Path(url.toLocalFile())
 		parent_dir = path.parent
-		return str(parent_dir)
+		log.debug(f'url_parent_directory({path}) -> {parent_dir}')
+		return QUrl.fromLocalFile(str(parent_dir))
 
 	@Slot(str, result=str)
 	def shortcut_text(self, name_or_enum : str):

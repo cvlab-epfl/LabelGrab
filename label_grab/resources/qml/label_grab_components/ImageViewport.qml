@@ -195,7 +195,8 @@ Rectangle {
 					this.label_to_paint = 0;
 				}
 
-				if ( event.modifiers & Qt.ShiftModifier ) {
+				// New instance: shift+drag, or drag when no instance is selected
+				if ( event.modifiers & Qt.ShiftModifier || !backend.selected ) {
 					this.rect_origin = Qt.point(event.x, event.y);
 					this.state = "new_instance";
 				}
@@ -314,7 +315,17 @@ Rectangle {
 							Math.abs(viewportMouse.mouseY - viewportMouse.rect_origin.y),
 						);
 
-						backend.new_instance(re, viewport.last_used_class_id);
+						const re_center = Qt.point(re.x + re.width * 0.5, re.y + re.height * 0.5);
+						const inst_at_pt = backend.instance_at_point(re_center);
+
+						// little mouse movement + clicking on existing instance -> select instance not create new one
+						if(inst_at_pt > 0 && re.width <= 5 && re.height <=5) {
+							backend.select_instance(inst_at_pt);
+						} else {
+							console.log('qml: new instance w', re.width, ' h ', re.height);
+							backend.new_instance(re, viewport.last_used_class_id);	
+						}
+
 						this.cancel_action();
 					}
 				}

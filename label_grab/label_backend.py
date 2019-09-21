@@ -252,7 +252,7 @@ class GrabCutInstance(QObject):
 	def update_qt_info(self):
 		self.qt_info = dict(
 			id = self.id,
-			name = f'{self.id} {self.semantic_class.name} {self.depth_index}',
+			name = f'{self.semantic_class.name} {self.depth_index}',
 			cls = self.semantic_class.to_dict(),
 			x = float(self.crop_tl[0] + self.roi_tl[0]),
 			y = float(self.crop_tl[1] + self.roi_tl[1]),

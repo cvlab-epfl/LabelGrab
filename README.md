@@ -35,7 +35,7 @@ Running the executables below requires no installation.
 ## Installation - from source
 Install the following python modules:
 ```
-pip install numpy opencv-python imageio click qtpy pyside2 qimage2ndarray
+pip install --upgrade numpy opencv-python-headless pillow click qtpy pyside2 qimage2ndarray
 ```
 and run
 ```

@@ -4,14 +4,16 @@ from qtpy.QtQuick import QQuickImageProvider
 from qtpy.QtQml import QJSValue
 from qtpy.QtGui import QImage, QColor, QKeySequence
 
-import numpy as np
-import cv2, imageio
-import traceback
-import qimage2ndarray
 from collections import namedtuple
 from operator import attrgetter
 from pathlib import Path
-import json, zipfile
+import json, zipfile, traceback
+
+import numpy as np
+import cv2
+import qimage2ndarray
+
+from .image_file_io import imread, imwrite
 
 import logging
 log = logging.getLogger(__name__)
@@ -218,11 +220,11 @@ class GrabCutInstance(QObject):
 		)
 
 	def save_to_dir(self, dir_path):
-		imageio.imwrite(dir_path / f'instance_{self.id:03d}_gc_mask.png', self.grab_cut_mask)
+		imwrite(dir_path / f'instance_{self.id:03d}_gc_mask.png', self.grab_cut_mask)
 		np.save(dir_path / f'instance_{self.id:03d}_gc_state.npy', self.grab_cut_state)
 
 	def load_from_dir(self, dir_path):
-		self.grab_cut_mask = imageio.imread(dir_path / f'instance_{self.id:03d}_gc_mask.png')
+		self.grab_cut_mask = imread(dir_path / f'instance_{self.id:03d}_gc_mask.png')
 		self.grab_cut_state = np.load(dir_path / f'instance_{self.id:03d}_gc_state.npy')
 		self.update_mask()
 
@@ -380,7 +382,7 @@ class LabelBackend(QObject):
 	@staticmethod
 	def load_photo(img_path):
 		""" Load image and ensure it is 8bit RGB """
-		img_data = imageio.imread(img_path)
+		img_data = imread(img_path)
 
 		# 8 bit
 		img_data = img_data.astype(np.uint8)
@@ -635,9 +637,9 @@ class LabelBackend(QObject):
 			out_dir = self.img_path.with_suffix('.labels')
 			out_dir.mkdir(exist_ok=True)
 
-			imageio.imwrite(out_dir / 'labels_semantic.png', sem_map)
-			imageio.imwrite(out_dir / 'labels_semantic_color.png', sem_colorimg)
-			imageio.imwrite(out_dir / 'labels_instance.png', inst_map)
+			imwrite(out_dir / 'labels_semantic.png', sem_map)
+			imwrite(out_dir / 'labels_semantic_color.png', sem_colorimg)
+			imwrite(out_dir / 'labels_instance.png', inst_map)
 
 			# internal state
 

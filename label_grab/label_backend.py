@@ -18,6 +18,8 @@ from .image_file_io import imread, imwrite
 import logging
 log = logging.getLogger(__name__)
 
+MAX_AREA_FOR_GRAB_CUT = 700*1000
+
 def bgr(r, g, b, a):
 	return (b, g, r, a)
 
@@ -41,7 +43,7 @@ class GrabCutInstance(QObject):
 	MORPH_KERNEL = np.ones((3, 3), np.uint8)
 
 
-	def __init__(self, backend, instance_id, semantic_class, photo, crop_rect, roi_rect, depth_index=None):
+	def __init__(self, backend, instance_id, semantic_class, photo, crop_rect, roi_rect, use_grab_cut=True, depth_index=None):
 		super().__init__()
 
 		self.backend = backend
@@ -62,7 +64,7 @@ class GrabCutInstance(QObject):
 
 		self.depth_index = depth_index or backend.depth_index_new()
 
-		self.dir_start = ''
+		self.use_grab_cut = use_grab_cut
 
 		self.update_qt_info()
 
@@ -92,47 +94,49 @@ class GrabCutInstance(QObject):
 				self.GRAB_CUT_NUM_ITER, mode,
 			)
 
-		try:
-			gc_init()
-		except cv2.error:
-			log.warning('GrabCut failed on initialization - retrying with center pixel marked')
-			set_center_pixel_to_foreground()
-			gc_init(mode=cv2.GC_INIT_WITH_RECT | cv2.GC_INIT_WITH_MASK)
+		if self.use_grab_cut:
+			try:
+				gc_init()
+			except cv2.error:
+				log.warning('GrabCut failed on initialization - retrying with center pixel marked')
+				set_center_pixel_to_foreground()
+				gc_init(mode=cv2.GC_INIT_WITH_RECT | cv2.GC_INIT_WITH_MASK)
 
-		# exclude previously existing instances
-		if existing_instance_mask_global is not None:
-			# we do not do it in the single init step, because if we use the "init with mask" mode
-			# grab-cut expects to have BOTH negative and positive samples and crashes on an assert
-			#  - but we only have negative samples
-			# therefore, we will now perform another step but with the negative samples
-			existing_instance_mask_crop = existing_instance_mask_global[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
+			# exclude previously existing instances
+			if existing_instance_mask_global is not None:
+				# we do not do it in the single init step, because if we use the "init with mask" mode
+				# grab-cut expects to have BOTH negative and positive samples and crashes on an assert
+				#  - but we only have negative samples
+				# therefore, we will now perform another step but with the negative samples
+				existing_instance_mask_crop = existing_instance_mask_global[self.crop_tl[1]:self.crop_br[1], self.crop_tl[0]:self.crop_br[0]]
 
-			if np.any(existing_instance_mask_crop):
-				self.grab_cut_mask[np.where(existing_instance_mask_crop)] = cv2.GC_BGD
-				log.debug('Applying mask of existing objects to the new instance, label counts: {nonzero} {bc}'.format(
-					nonzero = np.count_nonzero(existing_instance_mask_crop),
-					bc = np.bincount(self.grab_cut_mask.reshape(-1)),
-				))
-				
-				try:
-					self.grab_cut_update()
-				except cv2.error:
-					log.warning('GrabCut failed after applying existing object mask - retrying with center pixel marked')
-					set_center_pixel_to_foreground()
-					self.grab_cut_update()
+				if np.any(existing_instance_mask_crop):
+					self.grab_cut_mask[np.where(existing_instance_mask_crop)] = cv2.GC_BGD
+					log.debug('Applying mask of existing objects to the new instance, label counts: {nonzero} {bc}'.format(
+						nonzero = np.count_nonzero(existing_instance_mask_crop),
+						bc = np.bincount(self.grab_cut_mask.reshape(-1)),
+					))
+					
+					try:
+						self.grab_cut_update()
+					except cv2.error:
+						log.warning('GrabCut failed after applying existing object mask - retrying with center pixel marked')
+						set_center_pixel_to_foreground()
+						self.grab_cut_update()
 
 		self.update_mask()
 
 
 	def grab_cut_update(self):
-		cv2.grabCut(
-			self.photo_crop,
-			self.grab_cut_mask,
-			None,
-			self.grab_cut_state[0:1],
-			self.grab_cut_state[1:2],
-			self.GRAB_CUT_NUM_ITER, cv2.GC_INIT_WITH_MASK,
-		)
+		if self.use_grab_cut:
+			cv2.grabCut(
+				self.photo_crop,
+				self.grab_cut_mask,
+				None,
+				self.grab_cut_state[0:1],
+				self.grab_cut_state[1:2],
+				self.GRAB_CUT_NUM_ITER, cv2.GC_INIT_WITH_MASK,
+			)
 
 		self.update_mask()
 
@@ -219,6 +223,7 @@ class GrabCutInstance(QObject):
 			id = self.id, cls = self.semantic_class.id,
 			crop_rect = self.crop_rect.tolist(), roi_rect = self.roi_rect.tolist(),
 			depth_index = self.depth_index,
+			use_grab_cut = self.use_grab_cut,
 		)
 
 	def save_to_dir(self, dir_path):
@@ -238,6 +243,7 @@ class GrabCutInstance(QObject):
 			saved_info['id'], config.classes_by_id[saved_info['cls']], photo,
 			np.array(saved_info['crop_rect']), np.array(saved_info['roi_rect']),
 			depth_index = saved_info.get('depth_index'),
+			use_grab_cut = saved_info.get('use_grab_cut', True),
 		)
 		return inst
 
@@ -373,6 +379,8 @@ class LabelBackend(QObject):
 
 		self.image_provider = LabelOverlayImageProvider()
 		self.config = LabelConfig()
+
+		self.dir_start = ''
 
 	# Semantic classes
 	def load_config(self, cfg_path):
@@ -542,12 +550,25 @@ class LabelBackend(QObject):
 				np.minimum(roi_rect[1] + margin, self.resolution),
 			])
 
+			# calculate area
+			crop_size = crop_rect[1] - crop_rect[0]
+			area = np.prod(crop_size)
+			# bool(...) because the bool_ object returned by np is not json-serializable
+			use_grab_cut = bool(area < MAX_AREA_FOR_GRAB_CUT)
+
+
+			if not use_grab_cut:
+				log.info(f'GrabCut is not used for instance, because patch area ({area}) is above {MAX_AREA_FOR_GRAB_CUT}')
+
 			# automatically mark existing instances as excluded from the new instance
 			existing_instance_mask = np.zeros(tuple(self.resolution[::-1]), dtype=np.uint8)
 			for inst in self.instances:
 				inst.draw_mask(existing_instance_mask, 1)
 
-			instance = GrabCutInstance(self, self.next_instance_id, sem_class, self.photo, crop_rect, roi_rect)
+			instance = GrabCutInstance(
+				self, self.next_instance_id, sem_class, self.photo, crop_rect, roi_rect,
+				use_grab_cut = use_grab_cut,
+			)
 			self.next_instance_id += 1
 
 			instance.grab_cut_init(existing_instance_mask)

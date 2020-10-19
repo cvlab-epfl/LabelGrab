@@ -166,7 +166,8 @@ Rectangle {
 		hoverEnabled: true
 
 		onWheel: {
-			imageScale.value += imageScale.value * wheel.angleDelta.y / 1200;
+			const new_scale = imageScale.value * (1. + wheel.angleDelta.y / 1200.);
+			imageScale.value = Math.max(0.01, Math.min(100., new_scale));
 		}
 
 		onPressed: function(event) {
@@ -230,7 +231,7 @@ Rectangle {
 
 		property var key_confirm: function(event) {}
 
-		onExited: cancel_action()
+		//onExited: cancel_action()
 
 		Shortcut {
 			sequence: "Esc"

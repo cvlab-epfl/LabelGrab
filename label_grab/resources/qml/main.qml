@@ -47,10 +47,13 @@ ApplicationWindow {
 				onTriggered: openFileDialog.open();
 			}
 			Action { 
+				id: actionSave
 				text: qsTr("Save")  + utils.shortcut_text(this.shortcut) 
 				icon.name: "file-save"
 				shortcut: StandardKey.Save
 				onTriggered: function() { 
+					notification.show('Saving')
+					
 					const save_success = backend.save();
 					if(save_success) {
 						notification.show('Saved ' + backend.get_image_path())
@@ -59,6 +62,7 @@ ApplicationWindow {
 					}
 				}
 			}
+			Shortcut {sequence: "S"; onActivated: actionSave.onTriggered()}
 
 			MenuSeparator { }
 			Action { text: qsTr("&Quit"); icon.name: "quit"; onTriggered: Qt.quit() }
@@ -118,6 +122,19 @@ ApplicationWindow {
 				onTriggered: modify_depth_index(+1)
 			}
 		}
+
+		// Menu {
+		// 	title: qsTr("&Algorithm")
+
+		// 	Action {
+		// 		id: actionToggleGrabcut
+		// 		text: qsTr("Toggle GrabCut") + utils.shortcut_text(this.shortcut)
+		// 		shortcut: "Ctrl+G"
+		// 		onTriggered: {
+		// 			console.log('Toggle GrabCut')
+		// 		}
+		// 	}
+		// }
 	}
 
 	FileDialog {

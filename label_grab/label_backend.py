@@ -62,6 +62,8 @@ class GrabCutInstance(QObject):
 
 		self.depth_index = depth_index or backend.depth_index_new()
 
+		self.dir_start = ''
+
 		self.update_qt_info()
 
 	def grab_cut_init(self, existing_instance_mask_global=None):
@@ -688,6 +690,16 @@ class LabelBackend(QObject):
 
 	selectedUpdate = Signal()
 	selected = Property(QObject, attrgetter('instance_selected'), notify=selectedUpdate)
+
+	def set_starting_directory(self, dir_start):
+		self.dir_start = dir_start
+
+	@Slot(result=str)
+	def get_starting_directory(self):
+		log.info(f'dir start {self.dir_start}')
+		return str(self.dir_start)
+
+
 
 
 class QtUtils(QObject):

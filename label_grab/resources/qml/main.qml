@@ -126,8 +126,8 @@ ApplicationWindow {
 		selectExisting: true
 		selectFolder: false
 		selectMultiple: false
-		folder: pathsProvider.standardPaths.writableLocation(pathsProvider.standardPaths.DocumentsLocation)
-
+		folder: backend.get_starting_directory() !== "" ? backend.get_starting_directory() : pathsProvider.standardPaths.writableLocation(pathsProvider.standardPaths.DocumentsLocation)
+		
 		onAccepted: {
 			console.log("You chose: " + this.fileUrls);
 			this.folder = utils.url_parent_directory(this.fileUrl);		
